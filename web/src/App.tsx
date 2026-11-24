@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { NATION, api, useLive, useStreamStatus } from './api';
 import type { AreaRow, Cand, ContestSummary, Drill, ElectionInfo, Summary, Totals } from './api';
 import { dateLabel, num, pct, time } from './format';
@@ -11,6 +11,7 @@ import {
 } from './components/results';
 
 const ReportPage = lazy(() => import('./pages/ReportPage'));
+const TvPage = lazy(() => import('./pages/TvPage'));
 const AdminPage = lazy(() => import('./admin/AdminPage'));
 
 export function App() {
@@ -19,6 +20,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/e/:id" element={<ElectionPage />} />
+        <Route path="/e/:id/tv" element={<TvPage />} />
         <Route path="/e/:id/c/:cid/a/:code" element={<AreaPage />} />
         <Route path="/report/*" element={<ReportPage />} />
         <Route path="/admin/*" element={<AdminPage />} />
@@ -87,7 +89,12 @@ function ElectionHeader({ election, crumbs }: { election: ElectionInfo; crumbs?:
           投票日 {dateLabel(election.date)}
         </p>
       </div>
-      <StatusBadge status={election.status} />
+      <div className="election-actions">
+        <Link className="btn btn-small" to={`/e/${election.id}/tv`}>
+          轉播版面
+        </Link>
+        <StatusBadge status={election.status} />
+      </div>
     </div>
   );
 }
@@ -139,9 +146,12 @@ function HomePage() {
 
 function ElectionPage() {
   const id = Number(useParams().id);
+  const [search] = useSearchParams();
   const { data, error } = useLive<Summary>(Number.isInteger(id) ? `/api/elections/${id}/summary` : null, id);
   if (error && !data) return <Shell><p className="alert">{error}</p></Shell>;
   if (!data) return <Shell><p className="muted">載入中…</p></Shell>;
+  // 管理員把預設版面設為「轉播版面」時，公開連結直接開轉播版面（網址加 ?detail=1 可看詳細看板）。
+  if (data.election.tv.defaultView === 'tv' && !search.has('detail')) return <Navigate to={`/e/${id}/tv`} replace />;
   const national = data.contests.length === 1 && data.contests[0].areaCode === NATION;
   return (
     <Shell election={data.election} updatedAt={data.updatedAt}>
@@ -350,7 +360,7 @@ function ContestCard({ election, contest, final }: { election: ElectionInfo; con
               <li key={c.id}>
                 <Swatch color={t.valid ? c.color : OTHER_COLOR} />
                 <span className="contest-cand">{c.name}</span>
-                {t.leaderId === c.id && <LeadTag kind={final ? 'win' : 'lead'} />}
+                {(c.declared || t.leaderId === c.id) && <LeadTag kind={c.declared || final ? 'win' : 'lead'} />}
                 <span className="contest-votes">{t.valid ? num(t.votes[c.id] ?? 0) : '—'}</span>
                 <span className="contest-pct">{t.valid ? pct(t.votes[c.id] ?? 0, t.valid, 1) : ''}</span>
               </li>
@@ -396,7 +406,12 @@ function AreaPage() {
       <section className="card block">
         <h2 className="block-title">{area.name} 得票</h2>
         <ShareBar candidates={contest.candidates} totals={area.totals} byRank />
-        <RankedRows candidates={contest.candidates} totals={area.totals} lead={area.code !== contest.areaCode ? (final ? 'top' : 'lead') : final ? 'win' : 'lead'} />
+        <RankedRows
+          candidates={contest.candidates}
+          totals={area.totals}
+          whole={area.code === contest.areaCode}
+          lead={area.code !== contest.areaCode ? (final ? 'top' : 'lead') : final ? 'win' : 'lead'}
+        />
       </section>
       <Stats totals={area.totals} unitLevel={election.unitLevel} />
       {children.length > 0 && (

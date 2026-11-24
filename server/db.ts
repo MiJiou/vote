@@ -131,7 +131,30 @@ export function openDb(path: string): DB {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+function addColumn(db: DB, table: string, column: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+/** 版本升級：舊資料庫啟動時自動補上新欄位，不需要手動處理。 */
+function migrate(db: DB): void {
+  const { user_version: version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
+  if (version < 1) {
+    // 轉播版面：候選人照片、個別宣布當選、每場選舉的轉播設定（快訊標題、焦點選舉區…）。
+    addColumn(db, 'candidates', 'declared', 'INTEGER NOT NULL DEFAULT 0');
+    addColumn(db, 'candidates', 'photo_version', "TEXT NOT NULL DEFAULT ''");
+    addColumn(db, 'elections', 'tv', "TEXT NOT NULL DEFAULT '{}'");
+    db.exec(`CREATE TABLE IF NOT EXISTS candidate_photos (
+      candidate_id INTEGER PRIMARY KEY REFERENCES candidates(id) ON DELETE CASCADE,
+      mime TEXT NOT NULL,
+      data BLOB NOT NULL
+    )`);
+    db.exec('PRAGMA user_version = 1');
+  }
 }
 
 const depth = new WeakMap<DB, number>();

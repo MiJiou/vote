@@ -1,6 +1,6 @@
 import { NATION, tx } from './db.ts';
 import type { Candidate, Contest, Ctx, Election, Unit, User } from './domain.ts';
-import { audit, candidatesByContest, getContest, getElection, listCandidates, listContests, listUnits } from './domain.ts';
+import { audit, candidatesByContest, getContest, getElection, listCandidates, listContests, listUnits, parseTv } from './domain.ts';
 import { HttpError, asInt, now, parseCount } from './util.ts';
 
 export type Source = 'admin' | 'reporter' | 'import' | 'auto';
@@ -392,6 +392,7 @@ const publicElection = (e: Election) => ({
   status: e.status,
   unitLevel: e.unit_level,
   sourceNote: e.source_note,
+  tv: parseTv(e.tv),
 });
 
 function contestSummary(ctx: Ctx, a: ContestAgg) {
@@ -407,6 +408,8 @@ function contestSummary(ctx: Ctx, a: ContestAgg) {
       runningMate: c.running_mate,
       party: c.party,
       color: c.color,
+      declared: !!c.declared,
+      photo: c.photo_version ? `/api/candidates/${c.id}/photo?v=${c.photo_version}` : null,
     })),
     totals: a.total,
   };

@@ -17,8 +17,39 @@ export type Election = {
   unit_level: UnitLevel;
   auto_approve_reports: number;
   source_note: string;
+  /** 轉播版面設定（JSON），格式見 TvConfig。 */
+  tv: string;
   created_at: string;
 };
+
+/** 轉播（新聞台風格）版面的設定。 */
+export type TvConfig = {
+  /** 快訊標題；空白時自動顯示開票進度。 */
+  headline: string;
+  headlineStyle: 'alert' | 'info';
+  /** 固定放在大版面的選舉區（最多 2 個）；空白則自動輪播。 */
+  focus: number[];
+  /** 輪播每一頁停留幾秒。 */
+  rotateSeconds: number;
+  /** 公開連結預設開啟哪一種版面。 */
+  defaultView: 'detail' | 'tv';
+};
+
+export function parseTv(raw: string | null | undefined): TvConfig {
+  let o: Partial<TvConfig> = {};
+  try {
+    o = JSON.parse(raw || '{}') as Partial<TvConfig>;
+  } catch {
+    /* 壞掉的設定當作沒設定 */
+  }
+  return {
+    headline: typeof o.headline === 'string' ? o.headline.slice(0, 60) : '',
+    headlineStyle: o.headlineStyle === 'info' ? 'info' : 'alert',
+    focus: Array.isArray(o.focus) ? o.focus.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 2) : [],
+    rotateSeconds: Math.min(60, Math.max(4, Number(o.rotateSeconds) || 8)),
+    defaultView: o.defaultView === 'tv' ? 'tv' : 'detail',
+  };
+}
 export type Contest = { id: number; election_id: number; name: string; area_code: string; sort: number };
 export type Candidate = {
   id: number;
@@ -28,6 +59,10 @@ export type Candidate = {
   running_mate: string;
   party: string;
   color: string;
+  /** 管理員已確認當選（或自行宣布當選），看板會蓋上「當選」章。 */
+  declared: number;
+  /** 照片版本；空字串表示沒有照片。 */
+  photo_version: string;
 };
 export type Station = {
   id: number;

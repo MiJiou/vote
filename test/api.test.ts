@@ -114,3 +114,54 @@ test('後台匯入：預覽不寫入，正式匯入才生效；可用權杖推�
   assert.equal((await app.inject({ url: `/api/elections/${election.id}/summary` })).json().contests[0].totals.valid, 78);
   await app.close();
 });
+
+test('轉播版面：候選人照片、當選標示與快訊設定', async () => {
+  const ctx = testCtx();
+  const { election, contest, candidates } = presidential(ctx);
+  const app = await testApp(ctx);
+  const admin = await loginAs(app, 'admin', 'admin-password');
+  const cand = candidates[0];
+  const summary = async () => (await app.inject({ url: `/api/elections/${election.id}/summary` })).json();
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const put = (dataUrl: string, cookie?: string) =>
+    app.inject({ method: 'PUT', url: `/api/admin/candidates/${cand.id}/photo`, headers: cookie ? { cookie } : {}, payload: { dataUrl } });
+
+  // 照片：只有管理員能上傳，只收真正的圖片
+  assert.equal((await put(png)).statusCode, 401);
+  assert.equal((await put('data:image/svg+xml;base64,PHN2Zy8+', admin)).statusCode, 400);
+  assert.equal((await put('data:image/png;base64,' + Buffer.from('<script>alert(1)</script>').toString('base64'), admin)).statusCode, 400);
+  const uploaded = await put(png, admin);
+  assert.equal(uploaded.statusCode, 200);
+  const photoUrl = uploaded.json().photo as string;
+  assert.equal((await summary()).contests[0].candidates[0].photo, photoUrl);
+  const photo = await app.inject({ url: photoUrl });
+  assert.equal(photo.statusCode, 200);
+  assert.equal(photo.headers['content-type'], 'image/png');
+  assert.equal(photo.headers['x-content-type-options'], 'nosniff');
+
+  // 當選標示
+  assert.equal((await summary()).contests[0].candidates[0].declared, false);
+  await app.inject({ method: 'POST', url: `/api/admin/candidates/${cand.id}/declare`, headers: { cookie: admin }, payload: { declared: true } });
+  assert.equal((await summary()).contests[0].candidates[0].declared, true);
+  // 修改候選人資料不會洗掉照片與當選標示
+  await app.inject({ method: 'PATCH', url: `/api/admin/candidates/${cand.id}`, headers: { cookie: admin }, payload: { number: 1, name: '甲候選人改名', party: '台灣民眾黨' } });
+  const after = (await summary()).contests[0].candidates[0];
+  assert.deepEqual([after.name, after.declared, after.photo], ['甲候選人改名', true, photoUrl]);
+
+  // 轉播設定：不合法的值會被修正，不屬於這場選舉的選舉區會被剔除
+  const patched = await app.inject({
+    method: 'PATCH', url: `/api/admin/elections/${election.id}`, headers: { cookie: admin },
+    payload: { tv: { headline: '  開票快訊  ', headlineStyle: 'weird', focus: [contest.id, 99999], rotateSeconds: 1, defaultView: 'tv', extra: 'x' } },
+  });
+  assert.equal(patched.statusCode, 200);
+  assert.deepEqual((await summary()).election.tv, { headline: '開票快訊', headlineStyle: 'alert', focus: [contest.id], rotateSeconds: 4, defaultView: 'tv' });
+  // 只改一個欄位時，其他設定保留
+  await app.inject({ method: 'PATCH', url: `/api/admin/elections/${election.id}`, headers: { cookie: admin }, payload: { tv: { headline: '' } } });
+  assert.deepEqual((await summary()).election.tv, { headline: '', headlineStyle: 'alert', focus: [contest.id], rotateSeconds: 4, defaultView: 'tv' });
+
+  // 移除照片
+  await app.inject({ method: 'DELETE', url: `/api/admin/candidates/${cand.id}/photo`, headers: { cookie: admin } });
+  assert.equal((await summary()).contests[0].candidates[0].photo, null);
+  assert.equal((await app.inject({ url: photoUrl })).statusCode, 404);
+  await app.close();
+});

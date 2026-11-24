@@ -1,0 +1,258 @@
+/*
+ * 轉播版面。舞台固定 1920×1080，所有尺寸都以這個大小為準，再由程式等比例縮放。
+ * 這是設計好的播出畫面，所以不跟著系統的深色模式切換。
+ * 每位候選人的代表色放在 --c；文字用加深過的 --c-ink，在淺底上才夠清楚。
+ */
+.tv-viewport {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #0d1826;
+}
+.tv-stage {
+  --ink: #14263b;
+  --ink-2: #4a5c70;
+  --line: #d3dde8;
+  --track: #dbe3ec;
+  /* 舞台中心對準視窗中心，再由程式依視窗大小縮放（視窗比舞台小時也不會跑位）。 */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  padding: 26px 50px 22px;
+  display: grid;
+  grid-template-rows: 600px 86px 218px 76px;
+  gap: 14px;
+  color: var(--ink);
+  color-scheme: light;
+  font-family: 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  background:
+    linear-gradient(118deg, transparent 0 46%, rgba(255, 255, 255, 0.5) 46% 52%, transparent 52%),
+    linear-gradient(118deg, transparent 0 68%, rgba(255, 255, 255, 0.35) 68% 71%, transparent 71%),
+    linear-gradient(160deg, #eef3f8 0%, #dbe6f1 55%, #cbd9e8 100%);
+  overflow: hidden;
+}
+.tv-stage h2, .tv-stage h3, .tv-stage p, .tv-stage ul { margin: 0; padding: 0; list-style: none; }
+.tv-message { grid-row: 1 / -1; display: grid; place-items: center; font-size: 48px; color: var(--ink-2); }
+
+.tv-card {
+  background: rgba(255, 255, 255, 0.86);
+  border: 2px solid #fff;
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(26, 52, 86, 0.14);
+  overflow: hidden;
+}
+
+/* 直排地名 */
+.tv-tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: var(--ink);
+  background: linear-gradient(180deg, #f7fafc, #e2eaf3);
+  border-right: 2px solid var(--line);
+}
+
+.tv-tab-text { display: flex; flex-direction: column; align-items: center; gap: 0.12em; font-size: 1em; line-height: 1.08; }
+.tv-tab-text span { display: block; }
+
+/* 候選人相關的共用零件 */
+.tv-row, .tv-col, .tv-mini-row, .tv-tally li {
+  --c: #8a8983;
+  --c-ink: var(--c);
+  --c-ink: color-mix(in oklab, var(--c) 80%, #000);
+  --c-deep: var(--c);
+  --c-deep: color-mix(in oklab, var(--c) 86%, #000);
+  --c-tint: #f2f5f8;
+  --c-tint: color-mix(in srgb, var(--c) 15%, #fff);
+}
+.tv-party {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--c-deep);
+  color: #fff;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+.tv-name { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tv-photo {
+  position: relative;
+  flex: none;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--c-tint), #fff);
+  border: 2px solid #fff;
+  box-shadow: 0 4px 12px rgba(26, 52, 86, 0.16);
+}
+.tv-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center top; border-radius: 12px; display: block; }
+.tv-silhouette { width: 100%; height: 100%; display: block; border-radius: 12px; fill: var(--c); opacity: 0.28; }
+.tv-photo-no {
+  position: absolute; left: 8px; bottom: 8px;
+  min-width: 40px; height: 40px; padding: 0 8px; border-radius: 20px;
+  display: grid; place-items: center;
+  background: #fff; color: var(--ink); border: 3px solid var(--c-deep);
+  font-size: 24px; font-weight: 800; line-height: 1;
+}
+.tv-stamp {
+  position: absolute; top: -10px; right: -10px;
+  width: 84px; height: 84px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: #fff; border: 6px solid #d0112b; box-shadow: 0 3px 10px rgba(208, 17, 43, 0.35);
+  transform: rotate(-12deg);
+}
+.tv-stamp span { color: #d0112b; font-size: 28px; font-weight: 900; letter-spacing: 0.04em; line-height: 1; }
+
+.wan { display: inline-flex; align-items: baseline; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
+.wan-unit { font-size: 0.32em; margin: 0 0.12em 0 0.08em; font-weight: 700; letter-spacing: 0; }
+.wan-rest { font-size: 0.74em; }
+.tv-votes { color: var(--c-ink); text-align: right; }
+.tv-meter { display: flex; align-items: center; gap: 14px; }
+.tv-bar { flex: 1; height: 14px; border-radius: 7px; background: var(--track); overflow: hidden; }
+.tv-bar span { display: block; height: 100%; border-radius: 7px; background: var(--c, var(--ink-2)); transition: width 0.6s ease; }
+.tv-pct { flex: none; min-width: 4.2ch; text-align: right; font-weight: 800; color: var(--ink); }
+
+/* ---------- 上半部：兩個焦點選舉區＋地圖 ---------- */
+.tv-top { display: grid; grid-template-columns: 650px 650px 480px; gap: 20px; min-height: 0; }
+.tv-focus { display: flex; }
+.tv-focus > .tv-tab { width: 92px; font-size: 54px; }
+.tv-focus-body { flex: 1; min-width: 0; padding: 14px; display: grid; grid-template-rows: 1fr 1fr auto; gap: 12px; }
+.tv-row {
+  display: flex; gap: 16px; padding: 12px; border-radius: 14px; min-height: 0;
+  background: linear-gradient(90deg, var(--c-tint), rgba(255, 255, 255, 0.7) 78%);
+  border-left: 8px solid transparent;
+}
+.tv-row.is-lead { border-left-color: var(--c-deep); }
+.tv-row .tv-photo { width: 168px; height: 100%; }
+.tv-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 2px 4px 4px 0; }
+.tv-row-head { display: flex; align-items: center; gap: 12px; }
+.tv-row .tv-name { font-size: 50px; line-height: 1.15; }
+.tv-row .tv-name.len-5 { font-size: 38px; }
+.tv-row .tv-name.len-7 { font-size: 26px; }
+.tv-row .tv-votes { font-size: 88px; }
+.tv-row .tv-votes.is-wide { font-size: 76px; }
+.tv-row .tv-pct { font-size: 34px; }
+.tv-focus-foot { display: flex; justify-content: space-between; gap: 16px; padding: 0 6px; font-size: 24px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+
+/* 全國單一選舉區：橫跨兩格，各組候選人並排 */
+.tv-national { grid-column: span 2; }
+.tv-cols { flex: 1; min-width: 0; padding: 16px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 16px; }
+.tv-col {
+  display: flex; flex-direction: column; justify-content: space-between; gap: 10px; min-width: 0;
+  padding: 16px 18px 12px; border-radius: 14px;
+  background: linear-gradient(180deg, var(--c-tint), rgba(255, 255, 255, 0.75) 70%);
+  border-top: 10px solid transparent;
+}
+.tv-col.is-lead { border-top-color: var(--c-deep); }
+.tv-col-head { display: flex; gap: 16px; align-items: flex-end; }
+.tv-col .tv-photo { width: 160px; height: 200px; }
+.tv-col-who { min-width: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.tv-col .tv-name { font-size: 54px; line-height: 1.15; max-width: 100%; }
+.tv-col .tv-name.len-4 { font-size: 40px; }
+.tv-col .tv-name.len-5 { font-size: 30px; }
+.tv-col .tv-name.len-7 { font-size: 22px; }
+.tv-mate { font-size: 30px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.tv-col .tv-votes { font-size: 80px; white-space: nowrap; }
+.tv-col .tv-pct { font-size: 44px; }
+.tv-col-foot { font-size: 26px; font-weight: 600; color: var(--ink-2); text-align: right; }
+.tv-cols.is-4 .tv-col .tv-photo { width: 104px; height: 130px; }
+.tv-cols.is-4 .tv-col .tv-name { font-size: 40px; }
+.tv-cols.is-4 .tv-col .tv-name.len-4 { font-size: 30px; }
+.tv-cols.is-4 .tv-col .tv-name.len-5 { font-size: 24px; }
+.tv-cols.is-4 .tv-col .tv-name.len-7 { font-size: 18px; }
+.tv-cols.is-4 .tv-col-head { gap: 12px; }
+.tv-cols.is-4 .tv-mate { font-size: 24px; }
+.tv-cols.is-4 .tv-col .tv-votes { font-size: 58px; }
+.tv-cols.is-4 .tv-col .tv-pct { font-size: 34px; }
+.tv-cols.is-2 .tv-col .tv-votes { font-size: 116px; }
+.tv-cols.is-2 .tv-col .tv-photo { width: 210px; height: 262px; }
+
+/* 右側地圖 */
+.tv-side { display: flex; flex-direction: column; padding: 14px 18px 16px; gap: 8px; min-height: 0; }
+.tv-side-title { font-size: 30px; font-weight: 800; }
+.tv-map { flex: 1; min-height: 0; display: grid; place-items: center; }
+.tv-map .map { height: 100%; aspect-ratio: 400 / 540; }
+.tv-map .map svg { height: 100%; width: auto; max-height: none; }
+.tv-map .map-area { fill: #cfd9e4; stroke: #fff; cursor: default; }
+.tv-map .map-area.is-inset { stroke: #cfd9e4; }
+.tv-map .map-outline { display: none; }
+.tv-map .map-frame { stroke: #b8c6d6; }
+.tv-map .map-frame-key { fill: #cfd9e4; }
+.tv-map .map-frame-title { fill: var(--ink-2); font-size: 11px; }
+.tv-map .tooltip { display: none; }
+.tv-tally { display: flex; justify-content: center; gap: 18px; }
+.tv-tally li { display: flex; align-items: center; gap: 8px; font-size: 34px; }
+.tv-tally .tv-party { width: 38px; height: 38px; font-size: 24px; border-radius: 8px; }
+.tv-progress { display: grid; gap: 6px; }
+.tv-progress .tv-bar { height: 12px; }
+.tv-progress .tv-bar span { background: var(--ink-2); }
+.tv-progress p { font-size: 24px; font-weight: 600; color: var(--ink-2); text-align: center; white-space: nowrap; }
+
+/* ---------- 快訊橫幅 ---------- */
+.tv-headline {
+  display: grid; place-items: center; padding: 0 32px; border-radius: 12px;
+  font-size: 52px; font-weight: 900; letter-spacing: 0.04em; line-height: 1; white-space: nowrap; overflow: hidden;
+  box-shadow: 0 8px 20px rgba(26, 52, 86, 0.18);
+}
+.tv-headline.is-alert { background: linear-gradient(90deg, #b90d26, #e0283c 50%, #b90d26); color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2); }
+.tv-headline.is-info { background: linear-gradient(90deg, #f6c21c, #ffdd4a 50%, #f6c21c); color: #1a1a1a; }
+.tv-headline.is-auto { background: linear-gradient(90deg, #14263b, #22405f 50%, #14263b); color: #fff; font-size: 44px; font-weight: 800; }
+
+/* ---------- 底部輪播小卡 ---------- */
+.tv-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; min-height: 0; animation: tv-fade 0.5s ease; }
+.tv-mini { display: flex; }
+.tv-mini > .tv-tab { width: 54px; font-size: 30px; }
+.tv-mini-body { flex: 1; min-width: 0; padding: 12px 10px 10px 14px; display: grid; grid-template-rows: 1fr 1fr; gap: 10px; }
+.tv-mini-row {
+  position: relative; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 10px; border-radius: 10px; min-width: 0;
+  background: linear-gradient(90deg, var(--c-deep), var(--c));
+  color: #fff;
+}
+.tv-mini-row .tv-party { width: 36px; height: 36px; font-size: 23px; border-radius: 8px; background: #fff; color: var(--c-ink); }
+.tv-mini-row .tv-name { flex: 1; font-size: 34px; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); }
+.tv-mini-row .tv-name.len-4 { font-size: 26px; }
+.tv-mini-row .tv-name.len-5 { font-size: 21px; }
+.tv-mini-row .tv-name.len-7 { font-size: 16px; }
+.tv-mini-votes { flex: none; font-size: 40px; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); }
+.tv-mini-row.is-empty .tv-mini-votes { opacity: 0.75; }
+/* 小卡上的當選章蓋在列的左上角，不佔名字的位置。 */
+.tv-mini-row .tv-stamp { top: -9px; left: -9px; right: auto; width: 40px; height: 40px; border-width: 3px; transform: rotate(-12deg); box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25); }
+.tv-mini-row .tv-stamp span { font-size: 13px; letter-spacing: 0; }
+
+/* ---------- 底列：時鐘＋跑馬資訊 ---------- */
+.tv-footer { display: flex; align-items: stretch; gap: 16px; min-height: 0; }
+.tv-clock {
+  flex: none; display: grid; place-items: center; width: 250px; border-radius: 12px;
+  background: #14263b; color: #fff; font-size: 52px; font-weight: 800; letter-spacing: 0.02em;
+}
+.tv-ticker {
+  flex: 1; min-width: 0; display: flex; align-items: center; padding: 0 26px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9); border: 2px solid #fff;
+  font-size: 34px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: tv-fade 0.5s ease;
+}
+.tv-note { flex: none; display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.tv-live { width: 12px; height: 12px; border-radius: 50%; background: #9aa7b5; }
+.tv-live.is-on { background: #0ca30c; }
+
+@keyframes tv-fade { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .tv-strip, .tv-ticker { animation: none; }
+  .tv-bar span { transition: none; }
+}
+
+/* 滑鼠移動時才出現的操作按鈕 */
+.tv-controls { position: fixed; top: 12px; right: 12px; display: flex; gap: 8px; transition: opacity 0.3s ease; z-index: 5; }
+.tv-controls.is-hidden { opacity: 0; pointer-events: none; }
+.tv-controls button, .tv-controls a {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(13, 24, 38, 0.82); color: #fff; font: 600 14px/1.4 system-ui, sans-serif; text-decoration: none; cursor: pointer;
+}
+.tv-controls button:hover, .tv-controls a:hover { background: #22405f; }

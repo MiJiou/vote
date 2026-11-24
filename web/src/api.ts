@@ -16,7 +16,19 @@ export type Totals = {
   leaderId: number | null;
   updatedAt: string | null;
 };
-export type Cand = { id: number; number: number; name: string; runningMate: string; party: string; color: string };
+export type Cand = {
+  id: number;
+  number: number;
+  name: string;
+  runningMate: string;
+  party: string;
+  color: string;
+  /** 管理員已確認當選（或自行宣布當選）。 */
+  declared: boolean;
+  /** 照片網址；沒有照片時為 null。 */
+  photo: string | null;
+};
+export type TvConfig = { headline: string; headlineStyle: 'alert' | 'info'; focus: number[]; rotateSeconds: number; defaultView: 'detail' | 'tv' };
 export type AreaRow = { code: string; name: string; level: 'nation' | 'county' | 'town' | 'station'; totals: Totals };
 export type ElectionInfo = {
   id: number;
@@ -26,6 +38,7 @@ export type ElectionInfo = {
   status: 'draft' | 'live' | 'final';
   unitLevel: 'county' | 'town' | 'station';
   sourceNote: string;
+  tv: TvConfig;
 };
 export type ContestSummary = { id: number; name: string; areaCode: string; areaName: string; candidates: Cand[]; totals: Totals; children?: AreaRow[] };
 export type Summary = { election: ElectionInfo; version: number; updatedAt: string | null; contests: ContestSummary[] };

@@ -232,3 +232,30 @@ test('CSV 工具：引號、換行、Tab 分隔與公式注入防護', () => {
   assert.deepEqual(parseCsv('縣市\t1號\n臺北市\t5\n'), [['縣市', '1號'], ['臺北市', '5']]);
   assert.ok(toCsv([['=SUM(A1)', -5, 'a,b']]).includes(`'=SUM(A1),-5,"a,b"`));
 });
+
+test('舊版資料庫啟動時自動升級，原有資料保留', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { openDb } = await import('../server/db.ts');
+  const dir = mkdtempSync(join(tmpdir(), 'vote-migrate-'));
+  const path = join(dir, 'vote.db');
+  try {
+    // 做出一個沒有轉播版面欄位的舊資料庫
+    const old = openDb(path);
+    old.exec("INSERT INTO elections (name, type, date, created_at) VALUES ('舊選舉', 'president', '2024-01-13', '2024-01-01T00:00:00Z')");
+    old.exec("INSERT INTO contests (election_id, name, area_code) VALUES (1, '總統副總統選舉', '00000')");
+    old.exec("INSERT INTO candidates (contest_id, number, name) VALUES (1, 1, '舊候選人')");
+    old.exec('DROP TABLE candidate_photos; ALTER TABLE candidates DROP COLUMN declared; ALTER TABLE candidates DROP COLUMN photo_version; ALTER TABLE elections DROP COLUMN tv; PRAGMA user_version = 0;');
+    old.close();
+
+    const db = openDb(path);
+    const cand = db.prepare('SELECT name, declared, photo_version FROM candidates').get() as Record<string, unknown>;
+    assert.deepEqual({ ...cand }, { name: '舊候選人', declared: 0, photo_version: '' });
+    assert.equal((db.prepare('SELECT tv FROM elections').get() as { tv: string }).tv, '{}');
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM candidate_photos').get() as { n: number }).n, 0);
+    db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

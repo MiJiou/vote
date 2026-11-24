@@ -9,10 +9,15 @@ export type Election = {
   unit_level: 'county' | 'town' | 'station';
   auto_approve_reports: number;
   source_note: string;
+  /** 轉播版面設定（JSON 字串）。 */
+  tv: string;
 };
 export type AdminElection = Election & { contests: number; candidates: number; results: number; pending: number };
 
-export type Candidate = { id: number; contest_id: number; number: number; name: string; running_mate: string; party: string; color: string };
+export type Candidate = {
+  id: number; contest_id: number; number: number; name: string; running_mate: string; party: string; color: string;
+  declared: number; photo_version: string;
+};
 export type Contest = { id: number; name: string; area_code: string; areaName: string; candidates: Candidate[]; units: number; reported: number };
 export type ElectionDetail = { election: Election; contests: Contest[]; stations: number; pending: number };
 

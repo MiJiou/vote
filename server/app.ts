@@ -97,6 +97,18 @@ export async function buildApp(ctx: Ctx): Promise<FastifyInstance> {
     return drill(ctx, toId(p.id), toId(p.cid), p.code, canPreview(req));
   });
 
+  app.get('/api/candidates/:id/photo', async (req, reply) => {
+    const id = toId((req.params as { id: string }).id);
+    const row = ctx.db.prepare('SELECT mime, data FROM candidate_photos WHERE candidate_id = ?').get(id) as { mime: string; data: Uint8Array } | undefined;
+    if (!row) throw new HttpError(404, '這位候選人沒有照片');
+    // 網址帶有版本參數，換照片就換網址，所以可以放心長期快取。
+    return reply
+      .header('content-type', row.mime)
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .header('x-content-type-options', 'nosniff')
+      .send(Buffer.from(row.data));
+  });
+
   // 即時推播（Server-Sent Events）：資料一有變動就通知看板重新抓取。
   app.get('/api/stream', (req, reply) => {
     reply.hijack();

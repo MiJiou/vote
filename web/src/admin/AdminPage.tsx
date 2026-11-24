@@ -489,6 +489,7 @@ const ACTIONS: Record<string, string> = {
   'election.create': '建立選舉', 'election.update': '修改選舉設定', 'election.delete': '刪除選舉',
   'election.reset_results': '清除全部票數', 'election.import_cec': '從中選會資料庫匯入',
   'candidate.create': '新增候選人', 'candidate.update': '修改候選人', 'candidate.delete': '刪除候選人', 'candidates.import': '匯入候選人',
+  'candidate.photo': '上傳候選人照片', 'candidate.photo_remove': '移除候選人照片', 'candidate.declare': '標示當選', 'candidate.undeclare': '取消當選標示',
   'stations.import': '匯入投開票所', 'stations.clear': '清除投開票所',
   'result.set': '後台輸入票數', 'result.clear': '清除票數', 'result.lock': '鎖定票數', 'result.unlock': '解除鎖定', 'results.import': '批次匯入票數',
   'submission.approve': '核准回報', 'submission.reject': '退回回報',

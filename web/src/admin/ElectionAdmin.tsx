@@ -7,6 +7,7 @@ import { errorText, fileToPayload, useFetch } from '../ui';
 import type { Candidate, Contest, Election, ElectionDetail } from './types';
 import { LEVEL_LABEL, STATUS_LABEL, TYPE_LABEL } from './types';
 import { EntryTab, ImportTab, ReviewTab, SourcesTab } from './DataTabs';
+import { TvTab } from './TvTab';
 
 export function ElectionAdmin({ onChanged }: { onChanged: () => Promise<void> }) {
   const id = Number(useParams().id);
@@ -40,6 +41,7 @@ export function ElectionAdmin({ onChanged }: { onChanged: () => Promise<void> })
         <NavLink to={`${base}/review`}>
           回報審核 {pending > 0 && <span className="count">{pending}</span>}
         </NavLink>
+        <NavLink to={`${base}/tv`}>轉播版面</NavLink>
       </nav>
       <Routes>
         <Route index element={<Overview detail={detail.data} reload={reload} />} />
@@ -49,6 +51,7 @@ export function ElectionAdmin({ onChanged }: { onChanged: () => Promise<void> })
         <Route path="import" element={<ImportTab election={election} reload={reload} />} />
         <Route path="sources" element={<SourcesTab election={election} />} />
         <Route path="review" element={<ReviewTab election={election} reload={reload} />} />
+        <Route path="tv" element={<TvTab election={election} contests={contests} reload={reload} />} />
       </Routes>
     </>
   );
@@ -207,6 +210,10 @@ function CandidatesTab({ election, contests, reload }: { election: Election; con
         <p className="help">
           欄位：{election.type === 'mayor' ? '縣市、' : ''}號次、姓名{election.type === 'president' ? '、副總統候選人' : ''}、政黨、顏色（選填，#RRGGBB）。同一選舉區相同號次會覆蓋。沒填顏色時依政黨自動配色。
         </p>
+        <p className="help">
+          照片用在「轉播版面」，請在下方各候選人那一列上傳（JPEG／PNG，系統會自動裁成直式大頭照）。請確認你有權使用這些照片。
+          「標示當選」會讓看板立刻蓋上當選章，適合候選人自行宣布當選、或該選舉區已確定結果時使用。
+        </p>
         {message && <p className={message.ok ? 'success' : 'alert'}>{message.text}</p>}
       </section>
       {contests.map((c) => (
@@ -248,11 +255,11 @@ function ContestCandidates({ election, contest, reload, open }: { election: Elec
       <div className="table-wrap">
         <table className="table grid-input">
           <thead>
-            <tr><th>號次</th><th>姓名</th>{president && <th>副總統候選人</th>}<th>政黨</th><th>代表色</th><th /></tr>
+            <tr><th>照片</th><th>號次</th><th>姓名</th>{president && <th>副總統候選人</th>}<th>政黨</th><th>代表色</th><th /></tr>
           </thead>
           <tbody>
             {contest.candidates.map((c) => (
-              <CandidateRow key={`${c.id}|${c.number}|${c.name}|${c.running_mate}|${c.party}|${c.color}`} cand={c} president={president} run={run} />
+              <CandidateRow key={`${c.id}|${c.number}|${c.name}|${c.running_mate}|${c.party}|${c.color}|${c.photo_version}|${c.declared}`} cand={c} president={president} run={run} />
             ))}
           </tbody>
         </table>
@@ -285,11 +292,63 @@ function ContestCandidates({ election, contest, reload, open }: { election: Elec
   );
 }
 
+/**
+ * 把照片裁成 4:5 的直式大頭照並縮到 480×600，再轉成 JPEG。
+ * 在瀏覽器裡先處理好，上傳的檔案只有幾十 KB，看板載入也快。
+ */
+async function fileToPhoto(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const W = 480;
+  const H = 600;
+  const scale = Math.max(W / bitmap.width, H / bitmap.height);
+  const sw = W / scale;
+  const sh = H / scale;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const g = canvas.getContext('2d');
+  if (!g) throw new Error('瀏覽器無法處理這張圖片');
+  // 直向裁切時偏上取景，比較不會切到頭。
+  g.drawImage(bitmap, (bitmap.width - sw) / 2, (bitmap.height - sh) * 0.15, sw, sh, 0, 0, W, H);
+  return canvas.toDataURL('image/jpeg', 0.86);
+}
+
 function CandidateRow({ cand, president, run }: { cand: Candidate; president: boolean; run: (fn: () => Promise<unknown>) => Promise<void> }) {
   const [v, setV] = useState(cand);
+  const file = useRef<HTMLInputElement>(null);
   const dirty = v.number !== cand.number || v.name !== cand.name || v.running_mate !== cand.running_mate || v.party !== cand.party || v.color.toUpperCase() !== cand.color.toUpperCase();
+  const base = `/api/admin/candidates/${cand.id}`;
+  const upload = (f: File | undefined) => {
+    if (!f) return;
+    void run(async () => {
+      try {
+        await api(`${base}/photo`, { method: 'PUT', body: { dataUrl: await fileToPhoto(f) } });
+      } finally {
+        if (file.current) file.current.value = '';
+      }
+    });
+  };
+  const declare = () => {
+    const next = !cand.declared;
+    const message = next
+      ? `確定要把 ${cand.number} 號 ${cand.name} 標示為「當選」嗎？\n看板會立刻蓋上當選章（即使其他地方還在開票）。`
+      : `取消 ${cand.name} 的「當選」標示？`;
+    if (window.confirm(message)) void run(() => api(`${base}/declare`, { body: { declared: next } }));
+  };
   return (
     <tr className={dirty ? 'is-dirty' : ''}>
+      <td>
+        <span className="photo-cell">
+          {cand.photo_version ? (
+            <img className="photo-thumb" src={`/api/candidates/${cand.id}/photo?v=${cand.photo_version}`} alt={`${cand.name}的照片`} />
+          ) : (
+            <span className="photo-thumb is-empty" aria-hidden="true" />
+          )}
+          <button className="btn btn-small" onClick={() => file.current?.click()}>{cand.photo_version ? '更換' : '上傳'}</button>
+          {cand.photo_version && <button className="btn btn-small" onClick={() => void run(() => api(`${base}/photo`, { method: 'DELETE' }))}>移除</button>}
+          <input ref={file} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => upload(e.target.files?.[0])} />
+        </span>
+      </td>
       <td><input className="input input-num" style={{ width: 56 }} value={v.number} onChange={(e) => setV({ ...v, number: Number(e.target.value.replace(/\D/g, '')) || 0 })} aria-label="號次" /></td>
       <td><input className="input" style={{ width: 130 }} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} aria-label="姓名" /></td>
       {president && <td><input className="input" style={{ width: 130 }} value={v.running_mate} onChange={(e) => setV({ ...v, running_mate: e.target.value })} aria-label="副總統候選人" /></td>}
@@ -297,10 +356,13 @@ function CandidateRow({ cand, president, run }: { cand: Candidate; president: bo
       <td><input className="color-input" type="color" value={v.color} onChange={(e) => setV({ ...v, color: e.target.value })} aria-label="代表色" /></td>
       <td>
         <span className="row">
-          <button className="btn btn-small btn-primary" disabled={!dirty} onClick={() => void run(() => api(`/api/admin/candidates/${cand.id}`, { method: 'PATCH', body: v }))}>儲存</button>
+          <button className="btn btn-small btn-primary" disabled={!dirty} onClick={() => void run(() => api(base, { method: 'PATCH', body: v }))}>儲存</button>
+          <button className={`btn btn-small${cand.declared ? ' is-declared' : ''}`} onClick={declare} aria-pressed={!!cand.declared}>
+            {cand.declared ? '✓ 已標示當選' : '標示當選'}
+          </button>
           <button
             className="btn btn-small btn-danger"
-            onClick={() => window.confirm(`確定刪除 ${cand.number} 號 ${cand.name}？`) && void run(() => api(`/api/admin/candidates/${cand.id}`, { method: 'DELETE' }))}
+            onClick={() => window.confirm(`確定刪除 ${cand.number} 號 ${cand.name}？`) && void run(() => api(base, { method: 'DELETE' }))}
           >
             刪除
           </button>

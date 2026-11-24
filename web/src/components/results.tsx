@@ -63,7 +63,7 @@ export function CandidateCards({ candidates, totals, lead: kind }: { candidates:
             <div className="cand-head">
               <span className="cand-no">{c.number}</span>
               <span className="cand-party">{c.party || '—'}</span>
-              {leading && <LeadTag kind={kind} />}
+              {(c.declared || leading) && <LeadTag kind={c.declared ? 'win' : kind} />}
             </div>
             <div className="cand-name">
               {c.name}
@@ -147,7 +147,7 @@ export function ShareBar({ candidates, totals, thin = false, byRank = false }: {
 
 // ---------- 候選人排行（下鑽頁、縣市長選舉區）----------
 
-export function RankedRows({ candidates, totals, lead }: { candidates: Cand[]; totals: Totals; lead: LeadKind }) {
+export function RankedRows({ candidates, totals, lead, whole }: { candidates: Cand[]; totals: Totals; lead: LeadKind; whole: boolean }) {
   const order = ranked(candidates, totals);
   const top = Math.max(1, ...order.map((c) => totals.votes[c.id] ?? 0));
   return (
@@ -161,7 +161,8 @@ export function RankedRows({ candidates, totals, lead }: { candidates: Cand[]; t
               <span className="cand-no is-small">{c.number}</span>
               <span className="ranked-name">{c.name}</span>
               <span className="ranked-party">{c.party}</span>
-              {totals.leaderId === c.id && <LeadTag kind={lead} />}
+              {/* 已宣布當選的候選人在整個選舉區的頁面直接標「當選」。 */}
+              {whole && c.declared ? <LeadTag kind="win" /> : totals.leaderId === c.id && <LeadTag kind={lead} />}
             </div>
             <div className="ranked-bar" aria-hidden="true">
               <span style={{ width: `${(votes / top) * 100}%`, background: c.color }} />

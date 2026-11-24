@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { NATION, dryRun, tx } from './db.ts';
 import type { Ctx, Election, Role } from './domain.ts';
-import { audit, createElection, getContest, getElection, listCandidates, listContests, listUnits, upsertCandidate } from './domain.ts';
+import { audit, createElection, getContest, getElection, listCandidates, listContests, listUnits, parseTv, upsertCandidate } from './domain.ts';
+import { decodePhoto } from './photos.ts';
 import { createUser, getUser, newToken, setPassword, sha256 } from './auth.ts';
 import { adminUnits, clearResult, findUnit, reviewSubmission, setLock, submitResult } from './results.ts';
 import type { ResultInput } from './results.ts';
@@ -104,8 +105,17 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
     }
     if (b.auto_approve_reports !== undefined) next.auto_approve_reports = b.auto_approve_reports ? 1 : 0;
     if (b.source_note !== undefined) next.source_note = String(b.source_note).slice(0, 300);
-    db.prepare('UPDATE elections SET name = ?, date = ?, status = ?, unit_level = ?, auto_approve_reports = ?, source_note = ? WHERE id = ?').run(
-      next.name, next.date, next.status, next.unit_level, next.auto_approve_reports, next.source_note, election.id,
+    const tv = (b as { tv?: unknown }).tv;
+    if (tv !== undefined) {
+      // 轉播設定：只留下合法的欄位，焦點選舉區必須屬於這場選舉。
+      const clean = parseTv(JSON.stringify({ ...parseTv(election.tv), ...(tv as object) }));
+      const own = new Set(listContests(ctx, election.id).map((c) => c.id));
+      clean.focus = clean.focus.filter((id) => own.has(id));
+      clean.headline = clean.headline.trim();
+      next.tv = JSON.stringify(clean);
+    }
+    db.prepare('UPDATE elections SET name = ?, date = ?, status = ?, unit_level = ?, auto_approve_reports = ?, source_note = ?, tv = ? WHERE id = ?').run(
+      next.name, next.date, next.status, next.unit_level, next.auto_approve_reports, next.source_note, next.tv, election.id,
     );
     audit(ctx, user, 'election.update', { id: election.id, changes: b });
     ctx.bus.bump(election.id);
@@ -168,6 +178,50 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
     }
     db.prepare('DELETE FROM candidates WHERE id = ?').run(id);
     audit(ctx, user, 'candidate.delete', { contest: contest.name, name: row.name });
+    ctx.bus.bump(contest.election_id);
+    return { ok: true };
+  });
+
+  // 照片、宣布當選：轉播版面會用到。
+  const candidateOf = (req: FastifyRequest) => {
+    const id = toId(param(req, 'id'));
+    const row = db.prepare('SELECT * FROM candidates WHERE id = ?').get(id) as { id: number; contest_id: number; name: string; number: number } | undefined;
+    if (!row) throw new HttpError(404, '找不到這位候選人');
+    return { cand: row, contest: getContest(ctx, row.contest_id) };
+  };
+
+  app.put('/api/admin/candidates/:id/photo', async (req) => {
+    const user = admin(req);
+    const { cand, contest } = candidateOf(req);
+    const { mime, data } = decodePhoto((req.body as { dataUrl?: unknown })?.dataUrl);
+    const version = Date.now().toString(36);
+    tx(db, () => {
+      db.prepare('INSERT INTO candidate_photos (candidate_id, mime, data) VALUES (?, ?, ?) ON CONFLICT (candidate_id) DO UPDATE SET mime = excluded.mime, data = excluded.data').run(cand.id, mime, data);
+      db.prepare('UPDATE candidates SET photo_version = ? WHERE id = ?').run(version, cand.id);
+    });
+    audit(ctx, user, 'candidate.photo', { contest: contest.name, name: cand.name, bytes: data.length });
+    ctx.bus.bump(contest.election_id);
+    return { photo: `/api/candidates/${cand.id}/photo?v=${version}` };
+  });
+
+  app.delete('/api/admin/candidates/:id/photo', async (req) => {
+    const user = admin(req);
+    const { cand, contest } = candidateOf(req);
+    tx(db, () => {
+      db.prepare('DELETE FROM candidate_photos WHERE candidate_id = ?').run(cand.id);
+      db.prepare("UPDATE candidates SET photo_version = '' WHERE id = ?").run(cand.id);
+    });
+    audit(ctx, user, 'candidate.photo_remove', { contest: contest.name, name: cand.name });
+    ctx.bus.bump(contest.election_id);
+    return { ok: true };
+  });
+
+  app.post('/api/admin/candidates/:id/declare', async (req) => {
+    const user = admin(req);
+    const { cand, contest } = candidateOf(req);
+    const declared = !!(req.body as { declared?: boolean })?.declared;
+    db.prepare('UPDATE candidates SET declared = ? WHERE id = ?').run(declared ? 1 : 0, cand.id);
+    audit(ctx, user, declared ? 'candidate.declare' : 'candidate.undeclare', { contest: contest.name, number: cand.number, name: cand.name });
     ctx.bus.bump(contest.election_id);
     return { ok: true };
   });

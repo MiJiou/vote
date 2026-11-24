@@ -93,6 +93,7 @@ strong { font-weight: 650; }
 /* ---------- 選舉標題 ---------- */
 .election-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .election-head h1 { font-size: clamp(22px, 3.2vw, 30px); line-height: 1.25; letter-spacing: 0.01em; }
+.election-actions { display: flex; align-items: center; gap: 10px; }
 .crumbs { font-size: 13px; color: var(--ink-2); margin-bottom: 2px; }
 .crumb-sep { margin: 0 6px; color: var(--muted); }
 .badge { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; font-weight: 600; white-space: nowrap; }
@@ -312,6 +313,10 @@ pre.code { margin: 0; max-width: 100%; padding: 10px 12px; border-radius: 8px; b
 .grid-input .input { min-height: 30px; padding: 2px 6px; width: 80px; }
 .grid-input .btn-small { padding: 2px 8px; }
 .grid-input tr.is-dirty { background: color-mix(in srgb, var(--warning) 12%, transparent); }
+.photo-cell { display: inline-flex; align-items: center; gap: 6px; }
+.photo-thumb { width: 32px; height: 40px; border-radius: 5px; object-fit: cover; object-position: center top; border: 1px solid var(--axis); background: var(--surface-2); flex: none; }
+.btn.is-declared { border-color: var(--critical); color: var(--critical); }
+.tv-preview { width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--axis); border-radius: 8px; background: #0d1826; display: block; }
 .color-input { width: 44px; height: 32px; padding: 2px; border-radius: 6px; border: 1px solid var(--axis); background: var(--surface); }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 14px; }
 .kv dt { color: var(--ink-2); }
