@@ -27,6 +27,8 @@ export type Cand = {
   declared: boolean;
   /** 照片網址；沒有照片時為 null。 */
   photo: string | null;
+  /** 照片出處（作者／授權），需要標示在照片旁。 */
+  photoCredit: string;
 };
 export type TvConfig = { headline: string; headlineStyle: 'alert' | 'info'; focus: number[]; rotateSeconds: number; defaultView: 'detail' | 'tv' };
 export type AreaRow = { code: string; name: string; level: 'nation' | 'county' | 'town' | 'station'; totals: Totals };

@@ -155,6 +155,11 @@ function migrate(db: DB): void {
     )`);
     db.exec('PRAGMA user_version = 1');
   }
+  if (version < 2) {
+    // 照片出處（作者／授權），自由授權的照片必須在畫面上標示。
+    addColumn(db, 'candidates', 'photo_credit', "TEXT NOT NULL DEFAULT ''");
+    db.exec('PRAGMA user_version = 2');
+  }
 }
 
 const depth = new WeakMap<DB, number>();

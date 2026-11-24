@@ -63,6 +63,8 @@ export type Candidate = {
   declared: number;
   /** 照片版本；空字串表示沒有照片。 */
   photo_version: string;
+  /** 照片出處，例如「王小明／CC BY-SA 4.0／維基共享資源」。 */
+  photo_credit: string;
 };
 export type Station = {
   id: number;

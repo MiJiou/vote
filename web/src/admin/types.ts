@@ -16,7 +16,7 @@ export type AdminElection = Election & { contests: number; candidates: number; r
 
 export type Candidate = {
   id: number; contest_id: number; number: number; name: string; running_mate: string; party: string; color: string;
-  declared: number; photo_version: string;
+  declared: number; photo_version: string; photo_credit: string;
 };
 export type Contest = { id: number; name: string; area_code: string; areaName: string; candidates: Candidate[]; units: number; reported: number };
 export type ElectionDetail = { election: Election; contests: Contest[]; stations: number; pending: number };

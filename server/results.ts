@@ -410,6 +410,7 @@ function contestSummary(ctx: Ctx, a: ContestAgg) {
       color: c.color,
       declared: !!c.declared,
       photo: c.photo_version ? `/api/candidates/${c.id}/photo?v=${c.photo_version}` : null,
+      photoCredit: c.photo_version ? c.photo_credit : '',
     })),
     totals: a.total,
   };

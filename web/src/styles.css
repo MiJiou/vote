@@ -313,6 +313,18 @@ pre.code { margin: 0; max-width: 100%; padding: 10px 12px; border-radius: 8px; b
 .grid-input .input { min-height: 30px; padding: 2px 6px; width: 80px; }
 .grid-input .btn-small { padding: 2px 8px; }
 .grid-input tr.is-dirty { background: color-mix(in srgb, var(--warning) 12%, transparent); }
+.dropzone { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px; border: 2px dashed var(--axis); border-radius: 10px; background: var(--surface-2); }
+.dropzone.is-over { border-color: var(--focus); background: color-mix(in srgb, var(--focus) 8%, var(--surface)); }
+.commons-list { display: grid; gap: 10px; }
+.commons-item { display: grid; grid-template-columns: 170px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--grid); }
+@media (max-width: 700px) { .commons-item { grid-template-columns: 1fr; } }
+.commons-who { display: grid; align-content: start; gap: 2px; }
+.commons-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.commons-option { display: flex; gap: 8px; align-items: flex-start; width: 300px; max-width: 100%; padding: 8px; border: 1px solid var(--axis); border-radius: 8px; cursor: pointer; font-size: 13px; }
+.commons-option.is-picked { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+.commons-option.is-none { width: auto; align-items: center; color: var(--ink-2); }
+.commons-option img { width: 64px; height: 80px; object-fit: cover; object-position: center top; border-radius: 4px; flex: none; background: var(--surface-2); }
+.commons-meta { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .photo-cell { display: inline-flex; align-items: center; gap: 6px; }
 .photo-thumb { width: 32px; height: 40px; border-radius: 5px; object-fit: cover; object-position: center top; border: 1px solid var(--axis); background: var(--surface-2); flex: none; }
 .btn.is-declared { border-color: var(--critical); color: var(--critical); }

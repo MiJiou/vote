@@ -8,6 +8,7 @@ import type { Candidate, Contest, Election, ElectionDetail } from './types';
 import { LEVEL_LABEL, STATUS_LABEL, TYPE_LABEL } from './types';
 import { EntryTab, ImportTab, ReviewTab, SourcesTab } from './DataTabs';
 import { TvTab } from './TvTab';
+import { BulkPhotoUpload, CommonsFinder, uploadPhoto } from './PhotoTools';
 
 export function ElectionAdmin({ onChanged }: { onChanged: () => Promise<void> }) {
   const id = Number(useParams().id);
@@ -216,6 +217,12 @@ function CandidatesTab({ election, contests, reload }: { election: Election; con
         </p>
         {message && <p className={message.ok ? 'success' : 'alert'}>{message.text}</p>}
       </section>
+      {contests.some((c) => c.candidates.length) && (
+        <>
+          <CommonsFinder electionId={election.id} onDone={reload} />
+          <BulkPhotoUpload contests={contests} onDone={reload} />
+        </>
+      )}
       {contests.map((c) => (
         <ContestCandidates key={c.id} election={election} contest={c} reload={reload} open={contests.length === 1} />
       ))}
@@ -292,27 +299,6 @@ function ContestCandidates({ election, contest, reload, open }: { election: Elec
   );
 }
 
-/**
- * 把照片裁成 4:5 的直式大頭照並縮到 480×600，再轉成 JPEG。
- * 在瀏覽器裡先處理好，上傳的檔案只有幾十 KB，看板載入也快。
- */
-async function fileToPhoto(file: File): Promise<string> {
-  const bitmap = await createImageBitmap(file);
-  const W = 480;
-  const H = 600;
-  const scale = Math.max(W / bitmap.width, H / bitmap.height);
-  const sw = W / scale;
-  const sh = H / scale;
-  const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
-  const g = canvas.getContext('2d');
-  if (!g) throw new Error('瀏覽器無法處理這張圖片');
-  // 直向裁切時偏上取景，比較不會切到頭。
-  g.drawImage(bitmap, (bitmap.width - sw) / 2, (bitmap.height - sh) * 0.15, sw, sh, 0, 0, W, H);
-  return canvas.toDataURL('image/jpeg', 0.86);
-}
-
 function CandidateRow({ cand, president, run }: { cand: Candidate; president: boolean; run: (fn: () => Promise<unknown>) => Promise<void> }) {
   const [v, setV] = useState(cand);
   const file = useRef<HTMLInputElement>(null);
@@ -322,7 +308,7 @@ function CandidateRow({ cand, president, run }: { cand: Candidate; president: bo
     if (!f) return;
     void run(async () => {
       try {
-        await api(`${base}/photo`, { method: 'PUT', body: { dataUrl: await fileToPhoto(f) } });
+        await uploadPhoto(cand.id, f, '');
       } finally {
         if (file.current) file.current.value = '';
       }
@@ -340,7 +326,7 @@ function CandidateRow({ cand, president, run }: { cand: Candidate; president: bo
       <td>
         <span className="photo-cell">
           {cand.photo_version ? (
-            <img className="photo-thumb" src={`/api/candidates/${cand.id}/photo?v=${cand.photo_version}`} alt={`${cand.name}的照片`} />
+            <img className="photo-thumb" src={`/api/candidates/${cand.id}/photo?v=${cand.photo_version}`} alt={`${cand.name}的照片`} title={cand.photo_credit ? `出處：${cand.photo_credit}` : undefined} />
           ) : (
             <span className="photo-thumb is-empty" aria-hidden="true" />
           )}

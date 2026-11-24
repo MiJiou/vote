@@ -132,7 +132,10 @@ function Portrait({ c, winner }: { c: Cand; winner: boolean }) {
   return (
     <div className="tv-photo">
       {c.photo ? (
-        <img src={c.photo} alt={`${c.name}的照片`} />
+        <>
+          <img src={c.photo} alt={`${c.name}的照片`} />
+          {c.photoCredit && <span className="tv-photo-credit">{c.photoCredit}</span>}
+        </>
       ) : (
         <svg viewBox="0 0 100 120" aria-hidden="true" className="tv-silhouette">
           <circle cx="50" cy="44" r="21" />

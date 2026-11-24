@@ -3,6 +3,7 @@ import { NATION, dryRun, tx } from './db.ts';
 import type { Ctx, Election, Role } from './domain.ts';
 import { audit, createElection, getContest, getElection, listCandidates, listContests, listUnits, parseTv, upsertCandidate } from './domain.ts';
 import { decodePhoto } from './photos.ts';
+import { fetchCommonsImage, findPhotos } from './commons.ts';
 import { createUser, getUser, newToken, setPassword, sha256 } from './auth.ts';
 import { adminUnits, clearResult, findUnit, reviewSubmission, setLock, submitResult } from './results.ts';
 import type { ResultInput } from './results.ts';
@@ -193,13 +194,15 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
   app.put('/api/admin/candidates/:id/photo', async (req) => {
     const user = admin(req);
     const { cand, contest } = candidateOf(req);
-    const { mime, data } = decodePhoto((req.body as { dataUrl?: unknown })?.dataUrl);
+    const body = (req.body ?? {}) as { dataUrl?: unknown; credit?: unknown };
+    const { mime, data } = decodePhoto(body.dataUrl);
+    const credit = typeof body.credit === 'string' ? body.credit.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
     const version = Date.now().toString(36);
     tx(db, () => {
       db.prepare('INSERT INTO candidate_photos (candidate_id, mime, data) VALUES (?, ?, ?) ON CONFLICT (candidate_id) DO UPDATE SET mime = excluded.mime, data = excluded.data').run(cand.id, mime, data);
-      db.prepare('UPDATE candidates SET photo_version = ? WHERE id = ?').run(version, cand.id);
+      db.prepare('UPDATE candidates SET photo_version = ?, photo_credit = ? WHERE id = ?').run(version, credit, cand.id);
     });
-    audit(ctx, user, 'candidate.photo', { contest: contest.name, name: cand.name, bytes: data.length });
+    audit(ctx, user, 'candidate.photo', { contest: contest.name, name: cand.name, bytes: data.length, credit });
     ctx.bus.bump(contest.election_id);
     return { photo: `/api/candidates/${cand.id}/photo?v=${version}` };
   });
@@ -209,11 +212,46 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
     const { cand, contest } = candidateOf(req);
     tx(db, () => {
       db.prepare('DELETE FROM candidate_photos WHERE candidate_id = ?').run(cand.id);
-      db.prepare("UPDATE candidates SET photo_version = '' WHERE id = ?").run(cand.id);
+      db.prepare("UPDATE candidates SET photo_version = '', photo_credit = '' WHERE id = ?").run(cand.id);
     });
     audit(ctx, user, 'candidate.photo_remove', { contest: contest.name, name: cand.name });
     ctx.bus.bump(contest.election_id);
     return { ok: true };
+  });
+
+  // 從維基共享資源找照片：先列出候選照片給管理員確認，確認後才下載、裁切、上傳。
+  app.get('/api/admin/elections/:id/commons-photos', async (req) => {
+    admin(req);
+    const election = getElection(ctx, toId(param(req, 'id')));
+    const all = (req.query as { all?: string }).all === '1';
+    const rows = db
+      .prepare(
+        `SELECT k.id, k.number, k.name, k.party, k.photo_version, c.id AS contest_id, c.name AS contest_name, c.area_code
+         FROM candidates k JOIN contests c ON c.id = k.contest_id WHERE c.election_id = ? ORDER BY c.sort, c.id, k.number`,
+      )
+      .all(election.id) as { id: number; number: number; name: string; party: string; photo_version: string; contest_id: number; contest_name: string; area_code: string }[];
+    const wanted = rows.filter((r) => all || !r.photo_version);
+    if (!wanted.length) return { candidates: [], excluded: 0 };
+    const { matches, excluded } = await findPhotos(wanted.map((r) => r.name));
+    return {
+      excluded,
+      candidates: wanted.map((r) => ({
+        id: r.id,
+        number: r.number,
+        name: r.name,
+        party: r.party,
+        contestName: r.contest_name,
+        areaName: ctx.areas.name(r.area_code),
+        hasPhoto: !!r.photo_version,
+        matches: matches.get(r.name) ?? [],
+      })),
+    };
+  });
+
+  app.get('/api/admin/commons/image', async (req, reply) => {
+    admin(req);
+    const { mime, data } = await fetchCommonsImage((req.query as { file?: unknown }).file);
+    return reply.header('content-type', mime).header('cache-control', 'private, max-age=600').header('x-content-type-options', 'nosniff').send(data);
   });
 
   app.post('/api/admin/candidates/:id/declare', async (req) => {
