@@ -4,6 +4,7 @@ import type { Ctx, Election, Role } from './domain.ts';
 import { audit, createElection, getContest, getElection, listCandidates, listContests, listUnits, parseTv, upsertCandidate } from './domain.ts';
 import { decodePhoto } from './photos.ts';
 import { fetchCommonsImage, findPhotos } from './commons.ts';
+import { checkConfig, fetchPage, parseCecPage, parseConfig, pageUrl } from './ceclive.ts';
 import { createUser, getUser, newToken, setPassword, sha256 } from './auth.ts';
 import { adminUnits, clearResult, findUnit, reviewSubmission, setLock, submitResult } from './results.ts';
 import type { ResultInput } from './results.ts';
@@ -416,15 +417,21 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
   };
   const publicSource = (s: DataSource) => ({ ...s, token_hash: undefined, last_hash: undefined, hasToken: !!s.token_hash, config: JSON.parse(s.config || '{}') });
 
-  function cleanSource(b: Partial<DataSource>, kind: SourceKind) {
+  function cleanSource(b: Partial<Omit<DataSource, 'config'>> & { config?: unknown }, kind: SourceKind) {
     const name = String(b.name ?? '').trim();
     if (!name) throw new HttpError(400, '請輸入來源名稱');
-    const url = String(b.url ?? '').trim();
+    let url = String(b.url ?? '').trim();
+    let config = typeof b.config === 'string' ? b.config : JSON.stringify(b.config ?? {});
     if (kind === 'csv_url' || kind === 'json_url') {
       if (!/^https?:\/\//i.test(url)) throw new HttpError(400, '請輸入 http(s) 開頭的網址');
     }
+    if (kind === 'cec_live') {
+      const c = checkConfig(parseConfig(config));
+      config = JSON.stringify(c);
+      url = c.base;
+    }
     const interval = Math.max(Number(b.interval_sec) || 60, MIN_INTERVAL[kind]);
-    return { name, url, interval, enabled: b.enabled ? 1 : 0 };
+    return { name, url, config, interval, enabled: b.enabled ? 1 : 0 };
   }
 
   app.get('/api/admin/elections/:id/sources', async (req) => {
@@ -438,12 +445,12 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
     const election = getElection(ctx, toId(param(req, 'id')));
     const b = (req.body ?? {}) as Partial<DataSource>;
     const kind = b.kind as SourceKind;
-    if (!['csv_url', 'json_url', 'push'].includes(kind)) throw new HttpError(400, '來源類型不正確');
+    if (!['csv_url', 'json_url', 'cec_live', 'push'].includes(kind)) throw new HttpError(400, '來源類型不正確');
     const c = cleanSource(b, kind);
     const token = kind === 'push' ? newToken() : null;
     const r = db
-      .prepare('INSERT INTO data_sources (election_id, name, kind, url, interval_sec, enabled, token_hash) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(election.id, c.name, kind, c.url, c.interval, c.enabled, token ? sha256(token) : null);
+      .prepare('INSERT INTO data_sources (election_id, name, kind, url, config, interval_sec, enabled, token_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(election.id, c.name, kind, c.url, c.config, c.interval, c.enabled, token ? sha256(token) : null);
     audit(ctx, user, 'source.create', { election: election.name, name: c.name, kind });
     return { ...publicSource(getSource(asInt(r.lastInsertRowid)!)), token };
   });
@@ -452,12 +459,36 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
     const user = admin(req);
     const s = getSource(toId(param(req, 'id')));
     const c = cleanSource({ ...s, ...((req.body ?? {}) as Partial<DataSource>) }, s.kind);
-    // 換了網址就清掉內容雜湊，下一次一定重新讀取。
-    db.prepare('UPDATE data_sources SET name = ?, url = ?, interval_sec = ?, enabled = ?, last_hash = CASE WHEN url = ? THEN last_hash ELSE \'\' END WHERE id = ?').run(
-      c.name, c.url, c.interval, c.enabled, c.url, s.id,
-    );
+    // 換了網址或設定就清掉內容雜湊，下一次一定重新讀取。
+    db.prepare(
+      "UPDATE data_sources SET name = ?, url = ?, config = ?, interval_sec = ?, enabled = ?, last_hash = CASE WHEN url = ? AND config = ? THEN last_hash ELSE '' END WHERE id = ?",
+    ).run(c.name, c.url, c.config, c.interval, c.enabled, c.url, c.config, s.id);
     audit(ctx, user, 'source.update', { id: s.id, name: c.name, enabled: c.enabled });
     return publicSource(getSource(s.id));
+  });
+
+  // 試讀中選會開票網站的一頁：只解析、不寫入，讓管理員在選舉當天先確認網址與格式。
+  app.post('/api/admin/elections/:id/cec-live/preview', async (req) => {
+    admin(req);
+    const election = getElection(ctx, toId(param(req, 'id')));
+    const b = (req.body ?? {}) as { base?: string; prefix?: string; code?: string };
+    const config = checkConfig(parseConfig(JSON.stringify({ base: b.base, prefix: b.prefix })));
+    const contests = listContests(ctx, election.id);
+    const code = b.code && ctx.areas.byCode.has(b.code) ? b.code : contests[0]?.area_code === '00000' ? '63000' : contests[0]?.area_code;
+    if (!code) throw new HttpError(400, '這場選舉還沒有選舉區');
+    const contest = contests.find((c) => c.area_code === code || c.area_code === '00000');
+    const mine = contest ? listCandidates(ctx, contest.id) : [];
+    try {
+      const { url, html } = await fetchPage(config, code);
+      const page = parseCecPage(html);
+      return {
+        url, areaName: ctx.areas.name(code), page,
+        candidates: page.candidates.map((p) => ({ ...p, ours: mine.find((m) => m.number === p.number)?.name ?? null })),
+        sum: page.candidates.reduce((s, p) => s + p.votes, 0),
+      };
+    } catch (err) {
+      throw new HttpError(502, `讀取 ${pageUrl(config, code)} 失敗：${err instanceof Error ? err.message : String(err)}`);
+    }
   });
 
   app.delete('/api/admin/sources/:id', async (req) => {

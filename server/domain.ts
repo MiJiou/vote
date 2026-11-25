@@ -300,9 +300,10 @@ export const OTHER_COLOR = '#8A8983';
 export const isIndependent = (party: string): boolean => !party.trim() || /無黨籍|未經政黨推薦|^無$/.test(party);
 
 export function defaultColor(party: string, used: string[] = []): string {
-  if (isIndependent(party)) return INDEPENDENT_COLOR;
-  for (const [re, color] of PARTY_COLORS) if (re.test(party)) return color;
   const taken = new Set(used.map((c) => c.toUpperCase()));
+  // 同一選舉區常有好幾位無黨籍候選人（例如 2026 年金門縣有 6 位）：第一位用無黨籍色，其餘依序換色，圖表上才分得出來。
+  if (isIndependent(party) && !taken.has(INDEPENDENT_COLOR)) return INDEPENDENT_COLOR;
+  if (!isIndependent(party)) for (const [re, color] of PARTY_COLORS) if (re.test(party)) return color;
   return FALLBACK_COLORS.find((c) => !taken.has(c)) ?? OTHER_COLOR;
 }
 

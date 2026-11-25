@@ -280,3 +280,14 @@ test('看板更新通知有頻率上限：連續變動合併成一次', async ()
   assert.equal(at.length, 2);
   assert.ok(at[1] - at[0] >= 390, `兩次通知至少間隔 400ms（實際 ${at[1] - at[0]}ms）`);
 });
+
+test('同一選舉區有多位無黨籍候選人時，預設顏色互不相同', () => {
+  const ctx = testCtx();
+  const election = createElection(ctx, { name: '縣市長', type: 'mayor', date: '2026-11-28', counties: ['09020'] });
+  const contest = listContests(ctx, election.id)[0];
+  const colors = ['無黨籍及未經政黨推薦', '', '無黨籍', '中國國民黨', '無黨籍及未經政黨推薦'].map((party, i) => upsertCandidate(ctx, contest, { number: i + 1, name: `候選人${i + 1}`, party }).color);
+  assert.equal(colors[0], '#D55181');
+  assert.equal(colors[3], '#2A66D6');
+  const independents = [colors[0], colors[1], colors[2], colors[4]];
+  assert.equal(new Set(independents).size, 4, `無黨籍顏色重複：${independents.join(',')}`);
+});

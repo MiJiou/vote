@@ -5,8 +5,9 @@ import { audit, createElection, getElection, listContests, upsertCandidate } fro
 import type { ImportReport, NormRow } from './importer.ts';
 import { applyRows, importTable, jsonToRows } from './importer.ts';
 import { HttpError, asInt, now, parseCsv } from './util.ts';
+import { checkConfig, collectCecLive, parseConfig } from './ceclive.ts';
 
-export type SourceKind = 'csv_url' | 'json_url' | 'cec_db' | 'push';
+export type SourceKind = 'csv_url' | 'json_url' | 'cec_db' | 'cec_live' | 'push';
 export type DataSource = {
   id: number;
   election_id: number;
@@ -24,7 +25,8 @@ export type DataSource = {
 };
 
 const MAX_BYTES = 20 * 1024 * 1024;
-export const MIN_INTERVAL: Record<SourceKind, number> = { csv_url: 10, json_url: 10, cec_db: 300, push: 0 };
+// 中選會開票網站每次要讀多頁，最短 20 秒一輪，避免造成對方負擔。
+export const MIN_INTERVAL: Record<SourceKind, number> = { csv_url: 10, json_url: 10, cec_db: 300, cec_live: 20, push: 0 };
 
 async function fetchText(url: string, timeoutMs = 20_000): Promise<string> {
   let parsed: URL;
@@ -68,6 +70,22 @@ export async function runSource(ctx: Ctx, source: DataSource, force = false): Pr
         return { ok: true, message: '來源內容與上次相同，未更新' };
       }
       report = source.kind === 'csv_url' ? importTable(ctx, election, parseCsv(text), opts) : applyRows(ctx, election, jsonToRows(parseJson(text)), opts);
+    } else if (source.kind === 'cec_live') {
+      const config = checkConfig(parseConfig(source.config));
+      const got = await collectCecLive(ctx, election, config);
+      const failed = got.pages.filter((p) => !p.ok);
+      const pagesNote = `讀取 ${got.pages.length} 頁${failed.length ? `，${failed.length} 頁有問題（${failed[0].name}：${failed[0].message}）` : ''}`;
+      if (!force && got.hash === source.last_hash) {
+        saveStatus(ctx, source.id, failed.length === 0, `${pagesNote}；內容與上次相同，未更新`);
+        return { ok: failed.length === 0, message: `${pagesNote}；內容與上次相同` };
+      }
+      if (!got.rows.length) throw new HttpError(502, pagesNote);
+      hash = got.hash;
+      report = applyRows(ctx, election, got.rows, opts);
+      const message = `${pagesNote}；${reportMessage(report)}`;
+      const ok = report.errorCount === 0 && failed.length === 0;
+      saveStatus(ctx, source.id, ok, message, hash);
+      return { ok, message, report };
     } else if (source.kind === 'cec_db') {
       const config = JSON.parse(source.config || '{}') as { themes?: CecThemeRef[] };
       if (!config.themes?.length) throw new HttpError(400, '尚未設定要讀取的中選會選舉資料');

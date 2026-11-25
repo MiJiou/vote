@@ -424,14 +424,97 @@ function FormatHelp() {
 // ====================== 自動讀取 ======================
 
 type Source = {
-  id: number; name: string; kind: 'csv_url' | 'json_url' | 'cec_db' | 'push'; url: string; interval_sec: number; enabled: number;
-  last_run_at: string | null; last_ok: number | null; last_message: string; hasToken: boolean;
+  id: number; name: string; kind: 'csv_url' | 'json_url' | 'cec_db' | 'cec_live' | 'push'; url: string; interval_sec: number; enabled: number;
+  last_run_at: string | null; last_ok: number | null; last_message: string; hasToken: boolean; config: { base?: string; prefix?: string };
 };
-const KIND_LABEL = { csv_url: 'CSV 網址（例如 Google 試算表）', json_url: 'JSON 網址', cec_db: '中選會選舉資料庫', push: 'API 推送' } as const;
+const KIND_LABEL = {
+  csv_url: 'CSV 網址（例如 Google 試算表）', json_url: 'JSON 網址', cec_db: '中選會選舉資料庫（選後正式結果）',
+  cec_live: '中選會開票網站（選舉當晚即時）', push: 'API 推送',
+} as const;
+const CEC_DEFAULT = { base: 'https://vote2026.cec.gov.tw/zh-TW', prefix: 'TC' };
+
+type Preview = {
+  url: string; areaName: string; sum: number;
+  page: { title: string; stationsCounted: number | null; stationsTotal: number | null; dataTime: string | null; valid: number | null; invalid: number | null; eligible: number | null };
+  candidates: { number: number; name: string | null; votes: number; ours: string | null }[];
+};
+const same = (a: string, b: string) => a.replace(/\s/g, '').replace(/台/g, '臺') === b.replace(/\s/g, '').replace(/台/g, '臺');
+
+/** 試讀中選會開票網站的一頁：只顯示解析結果，不寫入。選舉當天網站上線後先用這個確認網址與格式。 */
+function CecPreview({ electionId, base, prefix }: { electionId: number; base: string; prefix: string }) {
+  const areas = useFetch<Area[]>('/api/areas');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<Preview | null>(null);
+  const [error, setError] = useState('');
+  const run = async () => {
+    setBusy(true);
+    setError('');
+    setResult(null);
+    try {
+      setResult(await api<Preview>(`/api/admin/elections/${electionId}/cec-live/preview`, { body: { base, prefix, code: code || undefined } }));
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const ok = result && result.candidates.length > 0 && result.candidates.every((c) => c.ours && (!c.name || same(c.name, c.ours))) && (result.page.valid === null || result.page.valid === result.sum);
+  return (
+    <div className="stack">
+      <div className="row">
+        <label className="field">
+          <span>試讀哪個縣市</span>
+          <select className="input" value={code} onChange={(e) => setCode(e.target.value)}>
+            <option value="">（第一個選舉區）</option>
+            {(areas.data ?? []).filter((a) => a.level === 'county').map((a) => <option key={a.code} value={a.code}>{a.name}</option>)}
+          </select>
+        </label>
+        <button type="button" className="btn" onClick={() => void run()} disabled={busy || !base || !prefix}>{busy ? '讀取中…' : '試讀一頁（不寫入）'}</button>
+      </div>
+      {error && <p className="alert">{error}</p>}
+      {result && (
+        <div className="stack">
+          <p className={ok ? 'success' : 'alert'}>
+            {ok ? '格式正確，可以啟用。' : '解析結果有問題，請先不要啟用：'}
+            {!result.candidates.length && '頁面上找不到「號次／得票數」表格（網址或類別代碼可能不對）。'}
+          </p>
+          <p className="help">
+            <a href={result.url} target="_blank" rel="noreferrer noopener">{result.url}</a><br />
+            {result.page.title || '（頁面沒有標題）'}　已送投開票所 {result.page.stationsCounted ?? '?'} / {result.page.stationsTotal ?? '?'}　資料時間 {result.page.dataTime ?? '（找不到）'}
+          </p>
+          {result.candidates.length > 0 && (
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>號次</th><th>頁面上的姓名</th><th>我們的名單</th><th className="num">得票數</th></tr></thead>
+                <tbody>
+                  {result.candidates.map((c) => {
+                    const match = !!c.ours && (!c.name || same(c.name, c.ours));
+                    return (
+                      <tr key={c.number}>
+                        <td>{c.number}</td>
+                        <td>{c.name ?? <span className="muted">（頁面沒有姓名欄）</span>}</td>
+                        <td>{c.ours ?? <span className="chip chip-bad">沒有這個號次</span>} {c.ours && (match ? <span className="chip chip-ok">✓</span> : <span className="chip chip-bad">✕ 不符</span>)}</td>
+                        <td className="num">{num(c.votes)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="help">
+            得票加總 {num(result.sum)}　有效票 {num(result.page.valid)}{result.page.valid !== null && result.page.valid !== result.sum && <span className="chip chip-bad">不符</span>}　無效票 {num(result.page.invalid)}　選舉人數 {num(result.page.eligible)}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function SourcesTab({ election }: { election: Election }) {
   const sources = useFetch<Source[]>(`/api/admin/elections/${election.id}/sources`);
-  const [form, setForm] = useState({ name: '', kind: 'csv_url', url: '', interval_sec: 30, enabled: true });
+  const [form, setForm] = useState({ name: '', kind: 'csv_url', url: '', interval_sec: 30, enabled: true, ...CEC_DEFAULT });
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [token, setToken] = useState<{ id: number; token: string } | null>(null);
 
@@ -456,9 +539,10 @@ export function SourcesTab({ election }: { election: Election }) {
   const create = (e: FormEvent) => {
     e.preventDefault();
     void act(async () => {
-      const created = await api<Source & { token: string | null }>(`/api/admin/elections/${election.id}/sources`, { body: form });
+      const { base, prefix, ...rest } = form;
+      const created = await api<Source & { token: string | null }>(`/api/admin/elections/${election.id}/sources`, { body: { ...rest, config: { base, prefix } } });
       if (created.token) setToken({ id: created.id, token: created.token });
-      setForm({ name: '', kind: form.kind, url: '', interval_sec: 30, enabled: true });
+      setForm({ ...form, name: '', url: '' });
     }, '已新增資料來源');
   };
 
@@ -486,7 +570,7 @@ export function SourcesTab({ election }: { election: Election }) {
         {sources.error && <p className="alert">{sources.error}</p>}
         {sources.data && !sources.data.length && <p className="muted">尚未設定任何自動來源。</p>}
         {(sources.data ?? []).map((s) => (
-          <SourceRow key={s.id} source={s} act={act} onToken={(t) => setToken({ id: s.id, token: t })} />
+          <SourceRow key={s.id} source={s} act={act} electionId={election.id} onToken={(t) => setToken({ id: s.id, token: t })} />
         ))}
       </section>
 
@@ -499,6 +583,7 @@ export function SourcesTab({ election }: { election: Election }) {
               <select className="input" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
                 <option value="csv_url">{KIND_LABEL.csv_url}</option>
                 <option value="json_url">{KIND_LABEL.json_url}</option>
+                <option value="cec_live">{KIND_LABEL.cec_live}</option>
                 <option value="push">{KIND_LABEL.push}</option>
               </select>
             </label>
@@ -513,11 +598,26 @@ export function SourcesTab({ election }: { election: Election }) {
               </label>
             )}
           </div>
-          {form.kind !== 'push' && (
+          {(form.kind === 'csv_url' || form.kind === 'json_url') && (
             <label className="field">
               <span>網址</span>
               <input className="input" type="url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" required />
             </label>
+          )}
+          {form.kind === 'cec_live' && (
+            <>
+              <div className="row">
+                <label className="field grow">
+                  <span>開票網站網址開頭</span>
+                  <input className="input" value={form.base} onChange={(e) => setForm({ ...form, base: e.target.value })} required />
+                </label>
+                <label className="field" style={{ width: 140 }}>
+                  <span>類別代碼</span>
+                  <input className="input" value={form.prefix} onChange={(e) => setForm({ ...form, prefix: e.target.value })} required />
+                </label>
+              </div>
+              <CecPreview electionId={election.id} base={form.base} prefix={form.prefix} />
+            </>
           )}
           <label className="check">
             <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
@@ -544,7 +644,13 @@ export function SourcesTab({ election }: { election: Election }) {
 ] }`}</pre>
           <p>votes 的鍵是候選人號次；地區可用代碼或名稱。投開票所層級請加上 "station": "0001"。</p>
           <p>
-            <strong>關於中選會的即時資料：</strong>開票當晚的官方即時計票資料需事先向中選會申請，格式每屆公告。本系統內建的「中選會選舉資料庫」來源讀的是選後公布的正式結果，可在選後用來核對或更新為官方數字。
+            <strong>方法三：中選會開票網站（選舉當晚）。</strong>中選會開票時會公開各縣市的即時計票頁，網址像
+            <code>https://vote2026.cec.gov.tw/zh-TW/TC/63000000000000000.html</code>。「網址開頭」是 <code>/TC/</code> 前面那段、「類別代碼」是 <code>TC</code>
+            （2022 年縣市長是 TC；這兩項每次選舉可能不同，網站上線後打開任一縣市的結果頁，從瀏覽器網址列就能看到）。
+            填好後先按「試讀一頁」確認號次、姓名、得票數都對得上，再啟用。系統每輪讀 22 頁（以縣市為單位），最短 20 秒一輪；任何一頁格式不符、姓名對不上或加總不符，那一頁就不寫入，並在狀態裡標示。
+          </p>
+          <p>
+            <strong>關於中選會的資料：</strong>中選會提供給媒體的正式計票資料需事先申請。「中選會選舉資料庫」來源讀的是選後公布的正式結果，可在選後用來核對或更新為官方數字。
           </p>
         </div>
       </details>
@@ -552,12 +658,14 @@ export function SourcesTab({ election }: { election: Election }) {
   );
 }
 
-function SourceRow({ source, act, onToken }: { source: Source; act: (fn: () => Promise<unknown>, ok?: string) => Promise<unknown>; onToken: (token: string) => void }) {
+function SourceRow({ source, act, onToken, electionId }: { source: Source; act: (fn: () => Promise<unknown>, ok?: string) => Promise<unknown>; onToken: (token: string) => void; electionId: number }) {
   const [url, setUrl] = useState(source.url);
   const [interval, setIntervalSec] = useState(source.interval_sec);
+  const [cec, setCec] = useState({ base: source.config.base ?? '', prefix: source.config.prefix ?? '' });
   const [running, setRunning] = useState(false);
   const base = `/api/admin/sources/${source.id}`;
   const dirty = url !== source.url || interval !== source.interval_sec;
+  const cecDirty = cec.base !== (source.config.base ?? '') || cec.prefix !== (source.config.prefix ?? '') || interval !== source.interval_sec;
   const run = async () => {
     setRunning(true);
     await act(async () => {
@@ -601,6 +709,26 @@ function SourceRow({ source, act, onToken }: { source: Source; act: (fn: () => P
           </label>
           <button className="btn" disabled={!dirty} onClick={() => void act(() => api(base, { method: 'PATCH', body: { url, interval_sec: interval } }), '已儲存')}>儲存</button>
         </div>
+      )}
+      {source.kind === 'cec_live' && (
+        <>
+          <div className="row">
+            <label className="field grow">
+              <span>開票網站網址開頭</span>
+              <input className="input" value={cec.base} onChange={(e) => setCec({ ...cec, base: e.target.value })} />
+            </label>
+            <label className="field" style={{ width: 110 }}>
+              <span>類別代碼</span>
+              <input className="input" value={cec.prefix} onChange={(e) => setCec({ ...cec, prefix: e.target.value })} />
+            </label>
+            <label className="field" style={{ width: 130 }}>
+              <span>每幾秒讀一輪</span>
+              <input className="input input-num" type="number" min={20} value={interval} onChange={(e) => setIntervalSec(Number(e.target.value))} />
+            </label>
+            <button className="btn" disabled={!cecDirty} onClick={() => void act(() => api(base, { method: 'PATCH', body: { config: cec, interval_sec: interval } }), '已儲存')}>儲存</button>
+          </div>
+          <CecPreview electionId={electionId} base={cec.base} prefix={cec.prefix} />
+        </>
       )}
       {source.kind === 'push' && <p className="help">推送網址：<code>{location.origin}/api/ingest/{source.id}</code>（需帶 Authorization: Bearer 權杖）</p>}
       <p className="small">

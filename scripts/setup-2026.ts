@@ -1,7 +1,7 @@
 // 建立「2026（115 年）直轄市長、縣市長選舉」並匯入 22 縣市的候選人（號次取自中選會選舉公報）。
 //
-//   npm run setup:2026                 以「鄉鎮市區」為統計層級建立（預設）
-//   npm run setup:2026 -- --level county
+//   npm run setup:2026                 以「縣市」為統計層級建立（預設；讀中選會開票網站時每輪只需 22 頁）
+//   npm run setup:2026 -- --level town  以「鄉鎮市區」建立（可下鑽到鄉鎮地圖，但讀中選會網站每輪要 368 頁）
 //
 // 已經建立過時不會重複建立，只會補上或更新候選人。建立後選舉是「草稿」，到後台確認無誤再改成「開票中」。
 import { readFileSync } from 'node:fs';
@@ -15,7 +15,7 @@ import { parseCsv } from '../server/util.ts';
 const NAME = '2026 直轄市長、縣市長選舉';
 const DATE = '2026-11-28';
 const args = process.argv.slice(2);
-const level = (args[args.indexOf('--level') + 1] ?? 'town') as Election['unit_level'];
+const level = (args.includes('--level') ? args[args.indexOf('--level') + 1] : 'county') as Election['unit_level'];
 if (!['county', 'town', 'station'].includes(level)) throw new Error('--level 只能是 county、town 或 station');
 
 const ctx = createCtx(openDb(loadConfig().dbPath), loadConfig());

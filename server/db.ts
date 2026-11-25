@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS data_sources (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   election_id INTEGER NOT NULL REFERENCES elections(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('csv_url', 'json_url', 'cec_db', 'push')),
+  kind TEXT NOT NULL CHECK (kind IN ('csv_url', 'json_url', 'cec_db', 'cec_live', 'push')),
   url TEXT NOT NULL DEFAULT '',
   config TEXT NOT NULL DEFAULT '{}',
   interval_sec INTEGER NOT NULL DEFAULT 60,
@@ -159,6 +159,19 @@ function migrate(db: DB): void {
     // 照片出處（作者／授權），自由授權的照片必須在畫面上標示。
     addColumn(db, 'candidates', 'photo_credit', "TEXT NOT NULL DEFAULT ''");
     db.exec('PRAGMA user_version = 2');
+  }
+  if (version < 3) {
+    // 新增「中選會開票網站」來源類型：SQLite 不能修改 CHECK 條件，只能重建資料表。
+    const sql = (db.prepare("SELECT sql FROM sqlite_master WHERE name = 'data_sources'").get() as { sql: string }).sql;
+    if (!sql.includes('cec_live')) {
+      db.exec(`BEGIN;
+        ALTER TABLE data_sources RENAME TO data_sources_old;
+        ${sql.replace("'cec_db', 'push'", "'cec_db', 'cec_live', 'push'")};
+        INSERT INTO data_sources SELECT * FROM data_sources_old;
+        DROP TABLE data_sources_old;
+        COMMIT;`);
+    }
+    db.exec('PRAGMA user_version = 3');
   }
 }
 

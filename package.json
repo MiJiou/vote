@@ -17,7 +17,8 @@
     "typecheck": "tsc -p server/tsconfig.json && tsc -p web/tsconfig.json",
     "build:geo": "node scripts/build-geo.mjs",
     "demo": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/demo.ts",
-    "setup:2026": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/setup-2026.ts"
+    "setup:2026": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/setup-2026.ts",
+    "mock:cec": "node --disable-warning=ExperimentalWarning scripts/mock-cec.ts"
   },
   "dependencies": {
     "@fastify/compress": "^9.3.0",

@@ -111,6 +111,7 @@ const PARTY_SHORT: [RegExp, string][] = [
   [/時代力量/, '時'],
   [/親民黨/, '親'],
   [/基進/, '基'],
+  [/台灣團結聯盟|臺灣團結聯盟|台聯/, '聯'],
 ];
 const isIndependent = (party: string) => !party.trim() || /無黨籍|未經政黨推薦/.test(party);
 
