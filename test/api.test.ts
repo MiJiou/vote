@@ -189,3 +189,24 @@ test('公開資料的壓縮快取：內容與未壓縮一致，草稿選舉不�
   assert.equal((await app.inject({ url: `/api/elections/${election.id}/contests/${contest.id}/areas/63000`, headers: { 'accept-encoding': 'gzip' } })).statusCode, 404);
   await app.close();
 });
+
+test('CDN 快取標頭：只有已公開的選舉允許 CDN 保留，草稿預覽一律不快取', async () => {
+  const ctx = testCtx();
+  const { election, contest } = presidential(ctx);
+  const app = await testApp(ctx);
+  const admin = await loginAs(app, 'admin', 'admin-password');
+  const summary = `/api/elections/${election.id}/summary`;
+  const drill = `/api/elections/${election.id}/contests/${contest.id}/areas/63000`;
+
+  assert.equal((await app.inject({ url: summary })).headers['cache-control'], 'private, no-cache', '預設不開啟');
+  ctx.config.edgeCacheSeconds = 2;
+  for (const url of [summary, drill]) assert.equal((await app.inject({ url })).headers['cache-control'], 'public, max-age=0, s-maxage=2', url);
+
+  await app.inject({ method: 'PATCH', url: `/api/admin/elections/${election.id}`, headers: { cookie: admin }, payload: { status: 'draft' } });
+  for (const url of [summary, drill]) {
+    const preview = await app.inject({ url, headers: { cookie: admin } });
+    assert.equal(preview.statusCode, 200);
+    assert.equal(preview.headers['cache-control'], 'private, no-cache', `草稿預覽不可被快取：${url}`);
+  }
+  await app.close();
+});

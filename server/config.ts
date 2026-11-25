@@ -12,6 +12,7 @@ export type Config = {
   poller: boolean;
   logger: boolean;
   notifyIntervalMs: number;
+  edgeCacheSeconds: number;
 };
 
 const root = resolve(import.meta.dirname, '..');
@@ -32,5 +33,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     logger: env.LOG !== '0',
     // 看板更新通知的最短間隔（毫秒）。觀眾非常多時可以調大，例如 3000。
     notifyIntervalMs: Math.max(250, Number(env.NOTIFY_INTERVAL_MS) || 1500),
+    // 允許 Cloudflare 等 CDN 快取公開看板資料幾秒（0 = 不允許）。搭配 CDN 的快取規則使用，見 deploy/README.md。
+    edgeCacheSeconds: Math.min(30, Math.max(0, Math.floor(Number(env.EDGE_CACHE_SECONDS) || 0))),
   };
 }

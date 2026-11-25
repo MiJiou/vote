@@ -8,7 +8,7 @@ import { NATION } from './db.ts';
 import type { Ctx, Election, Unit, User } from './domain.ts';
 import { audit, getContest, getElection, listCandidates, listContests, listUnits } from './domain.ts';
 import { login, logout, sessionUser, setPassword, sha256, verifyPassword } from './auth.ts';
-import { cleanInput, drillJson, findUnit, submitResult, summaryJson } from './results.ts';
+import { cleanInput, drillJson, electionIsPublic, findUnit, submitResult, summaryJson } from './results.ts';
 import { brotliCompressSync, constants as zlib, gzipSync } from 'node:zlib';
 import type { ResultInput } from './results.ts';
 import type { DataSource } from './sources.ts';
@@ -88,7 +88,11 @@ export async function buildApp(ctx: Ctx): Promise<FastifyInstance> {
   const packed = new Map<string, { json: string; gzip?: Buffer; br?: Buffer }>();
   const sendJson = (req: FastifyRequest, reply: FastifyReply, electionId: number, json: string) => {
     const etag = `"${ctx.bus.version(electionId)}"`;
-    reply.header('etag', etag).header('cache-control', 'no-cache').header('vary', 'accept-encoding');
+    // 已公開的選舉可以讓 CDN 保留幾秒（s-maxage），瀏覽器則每次都要重新確認（max-age=0）。
+    // 草稿（只有管理員預覽得到）一律不讓任何快取保存。
+    const edge = ctx.config.edgeCacheSeconds;
+    const cacheControl = edge > 0 && electionIsPublic(ctx, electionId) ? `public, max-age=0, s-maxage=${edge}` : 'private, no-cache';
+    reply.header('etag', etag).header('cache-control', cacheControl).header('vary', 'accept-encoding');
     if (req.headers['if-none-match'] === etag) return reply.code(304).send();
     reply.type('application/json; charset=utf-8');
     const accept = String(req.headers['accept-encoding'] ?? '');

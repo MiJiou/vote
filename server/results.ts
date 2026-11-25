@@ -444,6 +444,11 @@ export function summaryJson(ctx: Ctx, electionId: number, allowDraft = false): s
 }
 
 /** 下鑽：某個選舉區在指定地區（全國／縣市／鄉鎮市區）之下的各區統計。 */
+/** 這場選舉是否已公開（不是草稿）。已公開的資料才可以讓 CDN 快取。 */
+export function electionIsPublic(ctx: Ctx, electionId: number): boolean {
+  return getAgg(ctx, electionId).election.status !== 'draft';
+}
+
 /** 下鑽資料的 JSON；同一版本、同一地區只算一次（開票時大家常看的是同幾個縣市）。 */
 export function drillJson(ctx: Ctx, electionId: number, contestId: number, areaCode: string, allowDraft = false): string {
   const agg = getAgg(ctx, electionId);

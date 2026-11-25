@@ -150,6 +150,8 @@ npm run demo -- --simulate
 
 ## 部署
 
+**用自己的電腦＋Cloudflare 上線**：照 [`deploy/README.md`](deploy/README.md) 一步步做（Windows／macOS 都有雙擊即可的啟動程式）。
+
 所有資料都在單一檔案 `data/vote.db`（SQLite），備份這個檔案就是備份整個系統。
 
 用 Docker：
@@ -170,6 +172,7 @@ docker run -d -p 3000:3000 -v vote-data:/data -e ADMIN_PASSWORD='請換成你的
 - 實測容量：4 核心、16 GB 的主機，9,000 位觀眾同時在線、票數每 0.2 秒變動一次，零錯誤，99% 的請求在 60 毫秒內完成。
   更多觀眾時可把 `NOTIFY_INTERVAL_MS` 調大，或在前面加 CDN
 - 伺服器要能連到你設定的自動讀取網址
+- 前面有 Cloudflare 等 CDN 時，設定 `EDGE_CACHE_SECONDS=2` 並加上快取規則，可大幅降低主機流量（見 `deploy/README.md` 步驟四）
 
 ## 開發
 

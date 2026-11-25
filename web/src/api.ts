@@ -73,6 +73,8 @@ export async function api<T>(url: string, options: { method?: string; body?: unk
     headers: options.body === undefined ? undefined : { 'content-type': 'application/json' },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     credentials: 'same-origin',
+    // 每次都向伺服器（或 CDN）確認是否有新版，不使用瀏覽器裡的舊資料。
+    cache: 'no-cache',
   });
   if (!res.ok) {
     let message = `請求失敗（${res.status}）`;
@@ -88,7 +90,7 @@ export async function api<T>(url: string, options: { method?: string; body?: unk
 
 // ---------- 即時更新 ----------
 
-type Listener = (electionId: number) => void;
+type Listener = (electionId: number, version: number) => void;
 const listeners = new Set<Listener>();
 const statusListeners = new Set<(open: boolean) => void>();
 let source: EventSource | null = null;
@@ -101,8 +103,8 @@ function ensureStream(): void {
   source.addEventListener('error', () => setOpen(false));
   source.addEventListener('update', (e) => {
     try {
-      const { electionId } = JSON.parse((e as MessageEvent).data) as { electionId: number };
-      for (const fn of listeners) fn(electionId);
+      const { electionId, version } = JSON.parse((e as MessageEvent).data) as { electionId: number; version: number };
+      for (const fn of listeners) fn(electionId, version);
     } catch {
       /* 忽略格式錯誤的事件 */
     }
@@ -129,7 +131,7 @@ export function useStreamStatus(): boolean {
 
 /**
  * 抓取資料並在該場選舉有變動時自動重抓。
- * 重抓期間保留上一版畫面，不閃爍；即時連線中斷時每 15 秒輪詢一次。
+ * 重抓期間保留上一版畫面，不閃爍；即時連線中斷時每 6 秒輪詢一次。
  */
 export function useLive<T>(url: string | null, electionId: number | null): { data: T | null; error: string | null; reload: () => void } {
   const [data, setData] = useState<T | null>(null);
@@ -137,6 +139,10 @@ export function useLive<T>(url: string | null, electionId: number | null): { dat
   const urlRef = useRef(url);
   const busy = useRef(false);
   const again = useRef(false);
+  // 通知裡帶的最新版本號。透過 CDN 時可能先拿到幾秒前的舊版，這時要再抓一次。
+  const wanted = useRef(0);
+  const retries = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     const target = urlRef.current;
@@ -151,6 +157,14 @@ export function useLive<T>(url: string | null, electionId: number | null): { dat
       if (urlRef.current === target) {
         setData(value);
         setError(null);
+        const got = (value as { version?: number }).version ?? Infinity;
+        if (got < wanted.current && retries.current < 4 && !retryTimer.current) {
+          retries.current++;
+          retryTimer.current = setTimeout(() => {
+            retryTimer.current = null;
+            void load();
+          }, 1500 + Math.random() * 1000);
+        }
       }
     } catch (err) {
       if (urlRef.current === target) setError(err instanceof Error ? err.message : '讀取失敗');
@@ -175,8 +189,13 @@ export function useLive<T>(url: string | null, electionId: number | null): { dat
     ensureStream();
     // 收到通知後隨機等 0–1.2 秒再抓，避免所有觀眾在同一瞬間湧入伺服器。
     let pending: ReturnType<typeof setTimeout> | null = null;
-    const onUpdate: Listener = (id) => {
-      if (id !== electionId || pending) return;
+    const onUpdate: Listener = (id, version) => {
+      if (id !== electionId) return;
+      if (version > wanted.current) {
+        wanted.current = version;
+        retries.current = 0;
+      }
+      if (pending) return;
       pending = setTimeout(() => {
         pending = null;
         void load();
@@ -185,7 +204,7 @@ export function useLive<T>(url: string | null, electionId: number | null): { dat
     listeners.add(onUpdate);
     const poll = setInterval(() => {
       if (!open && document.visibilityState === 'visible') void load();
-    }, 15_000);
+    }, 6_000);
     const onVisible = () => {
       if (document.visibilityState === 'visible') void load();
     };
@@ -193,6 +212,8 @@ export function useLive<T>(url: string | null, electionId: number | null): { dat
     return () => {
       listeners.delete(onUpdate);
       if (pending) clearTimeout(pending);
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      retryTimer.current = null;
       clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisible);
     };
