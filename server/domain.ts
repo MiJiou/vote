@@ -93,21 +93,33 @@ export class Bus {
   private versions = new Map<number, number>();
   private listeners = new Set<Listener>();
   private timers = new Map<number, NodeJS.Timeout>();
+  private lastSent = new Map<number, number>();
   private base = Date.now();
+
+  /**
+   * @param intervalMs 同一場選舉兩次通知之間至少間隔多久。每次通知都會讓所有觀眾重抓資料，
+   * 開票高峰時數字幾乎每秒都在變，限制頻率才撐得住大量觀眾。
+   */
+  private intervalMs: number;
+  constructor(intervalMs = 1500) {
+    this.intervalMs = intervalMs;
+  }
 
   version(electionId: number): number {
     return this.versions.get(electionId) ?? this.base;
   }
 
-  /** 資料有變動：版本 +1，並在短暫延遲後通知（大量匯入時只會通知一次）。 */
+  /** 資料有變動：版本 +1，並在短暫延遲後通知；連續變動時合併成一次（最多每 intervalMs 通知一次）。 */
   bump(electionId: number): void {
     this.versions.set(electionId, this.version(electionId) + 1);
     if (this.timers.has(electionId)) return;
+    const since = Date.now() - (this.lastSent.get(electionId) ?? 0);
     const t = setTimeout(() => {
       this.timers.delete(electionId);
+      this.lastSent.set(electionId, Date.now());
       const v = this.version(electionId);
       for (const fn of this.listeners) fn(electionId, v);
-    }, 250);
+    }, Math.max(250, this.intervalMs - since));
     t.unref();
     this.timers.set(electionId, t);
   }
@@ -131,7 +143,7 @@ export type Ctx = {
 };
 
 export function createCtx(db: DB, config: Config, areas = new Areas()): Ctx {
-  return { db, areas, bus: new Bus(), config, cache: new Map() };
+  return { db, areas, bus: new Bus(config.notifyIntervalMs), config, cache: new Map() };
 }
 
 export function audit(ctx: Ctx, user: User | null, action: string, detail: unknown = ''): void {

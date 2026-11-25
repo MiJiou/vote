@@ -11,6 +11,7 @@ export type Config = {
   trustProxy: boolean;
   poller: boolean;
   logger: boolean;
+  notifyIntervalMs: number;
 };
 
 const root = resolve(import.meta.dirname, '..');
@@ -29,5 +30,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: env.TRUST_PROXY === '1',
     poller: env.DISABLE_POLLER !== '1',
     logger: env.LOG !== '0',
+    // 看板更新通知的最短間隔（毫秒）。觀眾非常多時可以調大，例如 3000。
+    notifyIntervalMs: Math.max(250, Number(env.NOTIFY_INTERVAL_MS) || 1500),
   };
 }

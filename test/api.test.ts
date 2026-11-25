@@ -165,3 +165,27 @@ test('轉播版面：候選人照片、當選標示與快訊設定', async () =>
   assert.equal((await app.inject({ url: photoUrl })).statusCode, 404);
   await app.close();
 });
+
+test('公開資料的壓縮快取：內容與未壓縮一致，草稿選舉不會因快取外洩', async () => {
+  const { gunzipSync, brotliDecompressSync } = await import('node:zlib');
+  const ctx = testCtx();
+  const { election, contest, candidates } = presidential(ctx);
+  const app = await testApp(ctx);
+  const admin = await loginAs(app, 'admin', 'admin-password');
+  await app.inject({ method: 'PUT', url: `/api/admin/contests/${contest.id}/units/63000010`, headers: { cookie: admin }, payload: { votes: Object.fromEntries(candidates.map((c) => [c.id, 1000])), invalid: 1 } });
+  for (const url of [`/api/elections/${election.id}/summary`, `/api/elections/${election.id}/contests/${contest.id}/areas/63000`]) {
+    const plain = await app.inject({ url });
+    const gz = await app.inject({ url, headers: { 'accept-encoding': 'gzip' } });
+    const br = await app.inject({ url, headers: { 'accept-encoding': 'gzip, br' } });
+    assert.equal(gz.headers['content-encoding'], 'gzip');
+    assert.equal(br.headers['content-encoding'], 'br');
+    assert.equal(gunzipSync(gz.rawPayload).toString(), plain.body);
+    assert.equal(brotliDecompressSync(br.rawPayload).toString(), plain.body);
+    assert.equal((await app.inject({ url, headers: { 'if-none-match': plain.headers.etag as string } })).statusCode, 304);
+  }
+  // 改成草稿後：版本變了，舊的快取不能再被公開讀到
+  await app.inject({ method: 'PATCH', url: `/api/admin/elections/${election.id}`, headers: { cookie: admin }, payload: { status: 'draft' } });
+  assert.equal((await app.inject({ url: `/api/elections/${election.id}/summary`, headers: { 'accept-encoding': 'gzip' } })).statusCode, 404);
+  assert.equal((await app.inject({ url: `/api/elections/${election.id}/contests/${contest.id}/areas/63000`, headers: { 'accept-encoding': 'gzip' } })).statusCode, 404);
+  await app.close();
+});

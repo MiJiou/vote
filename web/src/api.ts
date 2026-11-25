@@ -173,8 +173,14 @@ export function useLive<T>(url: string | null, electionId: number | null): { dat
   useEffect(() => {
     if (electionId === null) return;
     ensureStream();
+    // 收到通知後隨機等 0–1.2 秒再抓，避免所有觀眾在同一瞬間湧入伺服器。
+    let pending: ReturnType<typeof setTimeout> | null = null;
     const onUpdate: Listener = (id) => {
-      if (id === electionId) void load();
+      if (id !== electionId || pending) return;
+      pending = setTimeout(() => {
+        pending = null;
+        void load();
+      }, Math.random() * 1200);
     };
     listeners.add(onUpdate);
     const poll = setInterval(() => {
@@ -186,6 +192,7 @@ export function useLive<T>(url: string | null, electionId: number | null): { dat
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       listeners.delete(onUpdate);
+      if (pending) clearTimeout(pending);
       clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisible);
     };

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import Fastify from 'fastify';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import compress from '@fastify/compress';
 import fastifyStatic from '@fastify/static';
@@ -8,7 +8,8 @@ import { NATION } from './db.ts';
 import type { Ctx, Election, Unit, User } from './domain.ts';
 import { audit, getContest, getElection, listCandidates, listContests, listUnits } from './domain.ts';
 import { login, logout, sessionUser, setPassword, sha256, verifyPassword } from './auth.ts';
-import { cleanInput, drill, findUnit, submitResult, summaryJson } from './results.ts';
+import { cleanInput, drillJson, findUnit, submitResult, summaryJson } from './results.ts';
+import { brotliCompressSync, constants as zlib, gzipSync } from 'node:zlib';
 import type { ResultInput } from './results.ts';
 import type { DataSource } from './sources.ts';
 import { ingest } from './sources.ts';
@@ -83,18 +84,39 @@ export async function buildApp(ctx: Ctx): Promise<FastifyInstance> {
 
   const canPreview = (req: FastifyRequest) => req.user?.role === 'admin';
 
+  // 公開資料的壓縮結果依「網址＋資料版本」快取：開票時成千上萬的觀眾抓的是同一份內容，只壓縮一次。
+  const packed = new Map<string, { json: string; gzip?: Buffer; br?: Buffer }>();
+  const sendJson = (req: FastifyRequest, reply: FastifyReply, electionId: number, json: string) => {
+    const etag = `"${ctx.bus.version(electionId)}"`;
+    reply.header('etag', etag).header('cache-control', 'no-cache').header('vary', 'accept-encoding');
+    if (req.headers['if-none-match'] === etag) return reply.code(304).send();
+    reply.type('application/json; charset=utf-8');
+    const accept = String(req.headers['accept-encoding'] ?? '');
+    const encoding = /\bbr\b/.test(accept) ? 'br' : /\bgzip\b/.test(accept) ? 'gzip' : null;
+    if (!encoding || json.length < 1024) return reply.send(json);
+    const key = `${req.url.split('?')[0]}|${etag}`;
+    let entry = packed.get(key);
+    if (!entry || entry.json !== json) {
+      if (packed.size > 2000) packed.clear();
+      entry = { json };
+      packed.set(key, entry);
+    }
+    const body =
+      encoding === 'br'
+        ? (entry.br ??= brotliCompressSync(json, { params: { [zlib.BROTLI_PARAM_QUALITY]: 5 } }))
+        : (entry.gzip ??= gzipSync(json, { level: 6 }));
+    return reply.header('content-encoding', encoding).send(body);
+  };
+
   app.get('/api/elections/:id/summary', async (req, reply) => {
     const id = toId((req.params as { id: string }).id);
-    const json = summaryJson(ctx, id, canPreview(req));
-    const etag = `"${ctx.bus.version(id)}"`;
-    reply.header('etag', etag).header('cache-control', 'no-cache');
-    if (req.headers['if-none-match'] === etag) return reply.code(304).send();
-    return reply.type('application/json; charset=utf-8').send(json);
+    return sendJson(req, reply, id, summaryJson(ctx, id, canPreview(req)));
   });
 
-  app.get('/api/elections/:id/contests/:cid/areas/:code', async (req) => {
+  app.get('/api/elections/:id/contests/:cid/areas/:code', async (req, reply) => {
     const p = req.params as { id: string; cid: string; code: string };
-    return drill(ctx, toId(p.id), toId(p.cid), p.code, canPreview(req));
+    const id = toId(p.id);
+    return sendJson(req, reply, id, drillJson(ctx, id, toId(p.cid), p.code, canPreview(req)));
   });
 
   app.get('/api/candidates/:id/photo', async (req, reply) => {

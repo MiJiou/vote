@@ -347,7 +347,7 @@ type ContestAgg = {
   byTown: Map<string, Totals>;
 };
 
-type ElectionAgg = { election: Election; contests: ContestAgg[]; summaryJson?: string };
+type ElectionAgg = { election: Election; contests: ContestAgg[]; summaryJson?: string; drills?: Map<string, string> };
 
 function aggregateContest(ctx: Ctx, election: Election, contest: Contest, candidates: Candidate[]): ContestAgg {
   const units = listUnits(ctx, election, contest);
@@ -444,6 +444,20 @@ export function summaryJson(ctx: Ctx, electionId: number, allowDraft = false): s
 }
 
 /** 下鑽：某個選舉區在指定地區（全國／縣市／鄉鎮市區）之下的各區統計。 */
+/** 下鑽資料的 JSON；同一版本、同一地區只算一次（開票時大家常看的是同幾個縣市）。 */
+export function drillJson(ctx: Ctx, electionId: number, contestId: number, areaCode: string, allowDraft = false): string {
+  const agg = getAgg(ctx, electionId);
+  if (agg.election.status === 'draft' && !allowDraft) throw new HttpError(404, '找不到這場選舉');
+  agg.drills ??= new Map();
+  const key = `${contestId}|${areaCode}`;
+  let json = agg.drills.get(key);
+  if (json === undefined) {
+    json = JSON.stringify(drill(ctx, electionId, contestId, areaCode, allowDraft));
+    if (agg.drills.size < 5000) agg.drills.set(key, json);
+  }
+  return json;
+}
+
 export function drill(ctx: Ctx, electionId: number, contestId: number, areaCode: string, allowDraft = false) {
   const agg = getAgg(ctx, electionId);
   if (agg.election.status === 'draft' && !allowDraft) throw new HttpError(404, '找不到這場選舉');

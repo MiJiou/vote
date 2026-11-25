@@ -259,3 +259,24 @@ test('舊版資料庫啟動時自動升級，原有資料保留', async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('看板更新通知有頻率上限：連續變動合併成一次', async () => {
+  const { Bus } = await import('../server/domain.ts');
+  const bus = new Bus(400);
+  const at: number[] = [];
+  const start = Date.now();
+  bus.subscribe(() => at.push(Date.now() - start));
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  bus.bump(1);
+  bus.bump(1);
+  await wait(300);
+  assert.equal(at.length, 1, '第一次在 250ms 後送出，前兩次變動合併');
+  bus.bump(1);
+  await wait(50);
+  bus.bump(1);
+  await wait(200);
+  assert.equal(at.length, 1, '距離上次通知不到 400ms，先不送');
+  await wait(250);
+  assert.equal(at.length, 2);
+  assert.ok(at[1] - at[0] >= 390, `兩次通知至少間隔 400ms（實際 ${at[1] - at[0]}ms）`);
+});
