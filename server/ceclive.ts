@@ -12,7 +12,21 @@ import { candidatesByContest, listContests } from './domain.ts';
 import type { NormRow } from './importer.ts';
 import { HttpError, normName } from './util.ts';
 
-export type CecLiveConfig = { base: string; prefix: string };
+export type CecLiveConfig = {
+  base: string;
+  prefix: string;
+  /** 自動尋找網址開頭與類別代碼（選舉當天網站上線時自動接上）。 */
+  auto?: boolean;
+  /** 自動尋找時要試的網址開頭；省略則用 DISCOVERY_BASES。 */
+  hosts?: string[];
+  /** 何時開始自動尋找（ISO 時間）；省略則為投票日 13:00（臺灣時間）。 */
+  startAt?: string;
+};
+
+/** 中選會歷年開票網站的位置（2022：www.cec.gov.tw、2024：vote2024、2025：vote.cec.gov.tw）。 */
+export const DISCOVERY_BASES = ['https://vote2026.cec.gov.tw/zh-TW', 'https://vote.cec.gov.tw/zh-TW', 'https://www.cec.gov.tw/zh-TW'];
+/** 可能的類別代碼：2022 年縣市長是 TC；2026 年中選會資訊網把縣市長標為 C1。 */
+export const DISCOVERY_PREFIXES = ['TC', 'C1', 'C2', 'CC', 'M1', 'T1'];
 
 export type ParsedPage = {
   title: string;
@@ -128,10 +142,21 @@ export function parseConfig(raw: string | null | undefined): CecLiveConfig {
   } catch {
     /* 當作沒設定 */
   }
-  return { base: String(o.base ?? '').trim().replace(/\/+$/, ''), prefix: String(o.prefix ?? '').trim() };
+  const out: CecLiveConfig = { base: String(o.base ?? '').trim().replace(/\/+$/, ''), prefix: String(o.prefix ?? '').trim() };
+  if (o.auto) out.auto = true;
+  if (Array.isArray(o.hosts)) out.hosts = o.hosts.map((h) => String(h).trim().replace(/\/+$/, '')).filter(Boolean).slice(0, 10);
+  if (typeof o.startAt === 'string' && !Number.isNaN(Date.parse(o.startAt))) out.startAt = o.startAt;
+  return out;
 }
 
 export function checkConfig(c: CecLiveConfig): CecLiveConfig {
+  // 自動尋找模式：網址開頭與類別代碼可以先空著，找到後才填入。
+  if (c.auto && !c.base && !c.prefix) {
+    for (const h of c.hosts ?? []) {
+      if (!/^https?:\/\//i.test(h)) throw new HttpError(400, `網址格式不正確：${h}`);
+    }
+    return c;
+  }
   let url: URL;
   try {
     url = new URL(c.base);
@@ -234,4 +259,50 @@ export async function collectCecLive(ctx: Ctx, election: Election, c: CecLiveCon
   const hash = createHash('sha256');
   targets.forEach((t, i) => hash.update(t.code).update('\0').update(bodies[i]).update('\0'));
   return { rows, pages: pages.map(({ contestId: _c, ...rest }) => rest), hash: hash.digest('hex') };
+}
+
+/** 從中選會網站的導覽清單（2025 年起有）找出可能的類別代碼。 */
+async function manifestPrefixes(base: string): Promise<string[]> {
+  try {
+    const origin = new URL(base).origin;
+    const res = await http(`${origin}/assets/def/tree-compiled.min.json?_=${Date.now()}`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return [];
+    const text = (await res.text()).slice(0, 5_000_000);
+    return [...new Set([...text.matchAll(/"prefix"\s*:\s*"([A-Za-z0-9]{1,4})"/g)].map((m) => m[1]))];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 自動尋找中選會開票網站：用第一個選舉區的縣市頁試各種「網址開頭 × 類別代碼」，
+ * 頁面上的號次與姓名必須和我們的候選人名單完全一致才採用，不會誤認成別的選舉。
+ */
+export async function discoverCecLive(ctx: Ctx, election: Election, c: CecLiveConfig): Promise<{ found: CecLiveConfig | null; tried: number }> {
+  const contests = listContests(ctx, election.id);
+  const contest = contests[0];
+  if (!contest) return { found: null, tried: 0 };
+  const code = contest.area_code === '00000' ? '63000' : contest.area_code;
+  const ours = candidatesByContest(ctx, election.id).get(contest.id) ?? [];
+  if (!ours.length) return { found: null, tried: 0 };
+  let tried = 0;
+  for (const base of c.hosts?.length ? c.hosts : DISCOVERY_BASES) {
+    const prefixes = [...new Set([...(await manifestPrefixes(base)), ...DISCOVERY_PREFIXES])];
+    for (const prefix of prefixes) {
+      tried++;
+      try {
+        const { html } = await fetchPage({ base, prefix }, code);
+        const page = parseCecPage(html);
+        if (!page.candidates.length || page.candidates.length !== ours.length) continue;
+        const ok = page.candidates.every((p) => {
+          const mine = ours.find((k) => k.number === p.number);
+          return mine && (!p.name || normName(p.name) === normName(mine.name) || normName(p.name).includes(normName(mine.name)));
+        });
+        if (ok) return { found: { ...c, base, prefix }, tried };
+      } catch {
+        // 網址不存在、連不上或格式不符：試下一個
+      }
+    }
+  }
+  return { found: null, tried };
 }

@@ -727,6 +727,12 @@ function SourceRow({ source, act, onToken, electionId }: { source: Source; act: 
             </label>
             <button className="btn" disabled={!cecDirty} onClick={() => void act(() => api(base, { method: 'PATCH', body: { config: cec, interval_sec: interval } }), '已儲存')}>儲存</button>
           </div>
+          {(source.config as { auto?: boolean }).auto && (
+            <p className="help">
+              🤖 自動尋找模式：{source.config.base ? '已自動找到上面的網址，' : '還沒找到網址，'}
+              會在需要時自動重新尋找。若在這裡手動改網址並儲存，就會改成固定使用你填的網址。
+            </p>
+          )}
           <CecPreview electionId={electionId} base={cec.base} prefix={cec.prefix} />
         </>
       )}

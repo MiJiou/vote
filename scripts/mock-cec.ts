@@ -1,7 +1,7 @@
 // 模擬中選會開票網站（演練用）：用中選會即時計票頁的格式，依 2026 年縣市長候選人名單，在幾分鐘內模擬開完票。
 //
 //   npm run mock:cec                          預設 10 分鐘開完，網站在 http://localhost:4000
-//   npm run mock:cec -- --minutes 3 --port 4000
+//   npm run mock:cec -- --minutes 3 --port 4000 --prefix C1
 //
 // 到後台「自動讀取」新增「中選會開票網站」來源，網址開頭填 http://localhost:4000/zh-TW、類別代碼填 TC，
 // 就能完整演練選舉當晚的自動讀取流程。數字是隨機產生的，不代表任何預測。
@@ -17,7 +17,8 @@ const opt = (name: string, fallback: number) => {
 };
 const minutes = opt('minutes', 10);
 const port = opt('port', 4000);
-const prefix = 'TC';
+const prefixArg = args.indexOf('--prefix');
+const prefix = prefixArg >= 0 && args[prefixArg + 1] ? args[prefixArg + 1] : 'TC';
 
 const areas = new Areas();
 const table = parseCsv(readFileSync(new URL('./data/candidates-2026.csv', import.meta.url), 'utf8'));

@@ -126,6 +126,7 @@ function Overview({ detail, reload }: { detail: ElectionDetail; reload: () => Pr
             </button>
           ))}
         </div>
+        <AutoPilot election={election} onSave={(body, ok) => void patch(body, ok)} />
         <p className="help">
           草稿：只有管理員看得到，可用來設定與演練。開票中：公開並即時更新，領先者標示「領先」。開票完成：領先者改標「當選」，停止回報。
         </p>
@@ -177,6 +178,40 @@ function Overview({ detail, reload }: { detail: ElectionDetail; reload: () => Pr
         </div>
       </section>
     </>
+  );
+}
+
+/** 自動駕駛：排定自動公開、全部開完後自動改為開票完成。 */
+function AutoPilot({ election, onSave }: { election: Election; onSave: (body: Partial<Election>, ok: string) => void }) {
+  const toLocal = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  const [at, setAt] = useState(toLocal(election.auto_live_at) || `${election.date}T16:00`);
+  return (
+    <div className="stack autopilot">
+      <div className="row row-center">
+        {election.status === 'draft' &&
+          (election.auto_live_at ? (
+            <span className="chip chip-wait">⏱ 將於 {new Date(election.auto_live_at).toLocaleString('zh-TW', { hour12: false })} 自動公開</span>
+          ) : (
+            <span className="muted small">沒有排定自動公開</span>
+          ))}
+        {election.status === 'draft' && (
+          <>
+            <input className="input" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} style={{ width: 220 }} aria-label="自動公開時間" />
+            <button className="btn btn-small" onClick={() => onSave({ auto_live_at: new Date(at).toISOString() }, '已排定自動公開時間')}>排定自動公開</button>
+            {election.auto_live_at && <button className="btn btn-small" onClick={() => onSave({ auto_live_at: '' }, '已取消自動公開')}>取消</button>}
+          </>
+        )}
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={!!election.auto_final} onChange={(e) => onSave({ auto_final: e.target.checked ? 1 : 0 }, e.target.checked ? '已開啟：全部開完後自動改為開票完成' : '已關閉自動改為開票完成')} />
+        所有選舉區的投開票所全部開完、並維持 10 分鐘後，自動改為「開票完成」（看板會標示當選）
+      </label>
+    </div>
   );
 }
 

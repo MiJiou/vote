@@ -11,6 +11,10 @@ export type Election = {
   source_note: string;
   /** 轉播版面設定（JSON 字串）。 */
   tv: string;
+  /** 排定自動公開的時間（ISO）；空字串表示沒有排定。 */
+  auto_live_at: string;
+  /** 全部開完後自動改為開票完成。 */
+  auto_final: number;
 };
 export type AdminElection = Election & { contests: number; candidates: number; results: number; pending: number };
 

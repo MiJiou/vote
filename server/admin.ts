@@ -106,6 +106,14 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
       next.unit_level = b.unit_level;
     }
     if (b.auto_approve_reports !== undefined) next.auto_approve_reports = b.auto_approve_reports ? 1 : 0;
+    if (b.auto_live_at !== undefined) {
+      const v = String(b.auto_live_at ?? '').trim();
+      if (v && Number.isNaN(Date.parse(v))) throw new HttpError(400, '自動公開時間格式不正確');
+      next.auto_live_at = v ? new Date(v).toISOString() : '';
+    }
+    if (b.auto_final !== undefined) next.auto_final = b.auto_final ? 1 : 0;
+    // 手動改狀態時取消排定的自動公開，避免改回草稿後又被自動公開。
+    if (b.status !== undefined && b.status !== election.status && b.auto_live_at === undefined) next.auto_live_at = '';
     if (b.source_note !== undefined) next.source_note = String(b.source_note).slice(0, 300);
     const tv = (b as { tv?: unknown }).tv;
     if (tv !== undefined) {
@@ -116,9 +124,9 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
       clean.headline = clean.headline.trim();
       next.tv = JSON.stringify(clean);
     }
-    db.prepare('UPDATE elections SET name = ?, date = ?, status = ?, unit_level = ?, auto_approve_reports = ?, source_note = ?, tv = ? WHERE id = ?').run(
-      next.name, next.date, next.status, next.unit_level, next.auto_approve_reports, next.source_note, next.tv, election.id,
-    );
+    db.prepare(
+      'UPDATE elections SET name = ?, date = ?, status = ?, unit_level = ?, auto_approve_reports = ?, source_note = ?, tv = ?, auto_live_at = ?, auto_final = ? WHERE id = ?',
+    ).run(next.name, next.date, next.status, next.unit_level, next.auto_approve_reports, next.source_note, next.tv, next.auto_live_at, next.auto_final, election.id);
     audit(ctx, user, 'election.update', { id: election.id, changes: b });
     ctx.bus.bump(election.id);
     return getElection(ctx, election.id);

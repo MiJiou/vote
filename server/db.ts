@@ -173,6 +173,12 @@ function migrate(db: DB): void {
     }
     db.exec('PRAGMA user_version = 3');
   }
+  if (version < 4) {
+    // 自動駕駛：排定時間自動公開、全部開完後自動改為開票完成。
+    addColumn(db, 'elections', 'auto_live_at', "TEXT NOT NULL DEFAULT ''");
+    addColumn(db, 'elections', 'auto_final', 'INTEGER NOT NULL DEFAULT 0');
+    db.exec('PRAGMA user_version = 4');
+  }
 }
 
 const depth = new WeakMap<DB, number>();

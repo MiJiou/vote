@@ -19,6 +19,10 @@ export type Election = {
   source_note: string;
   /** 轉播版面設定（JSON），格式見 TvConfig。 */
   tv: string;
+  /** 排定自動從草稿改為開票中的時間（ISO）；空字串表示不自動。 */
+  auto_live_at: string;
+  /** 全部選舉區開完（投開票所全數開出）後，自動改為開票完成。 */
+  auto_final: number;
   created_at: string;
 };
 
