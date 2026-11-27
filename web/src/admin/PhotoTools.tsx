@@ -38,19 +38,28 @@ type Status = { ok: boolean; text: string } | null;
 
 type CommonsMatch = {
   qid: string; label: string; description: string; birthYear: string | null; taiwan: boolean; politician: boolean;
+  parties: string[]; via: 'wikidata' | 'wikipedia' | 'commons';
   file: string; thumb: string; author: string; license: string; sourceUrl: string; credit: string;
 };
 type CommonsCandidate = { id: number; number: number; name: string; party: string; contestName: string; areaName: string; hasPhoto: boolean; matches: CommonsMatch[] };
 
+const normParty = (s: string) => s.replace(/\s+/g, '').replace(/台/g, '臺');
+const partyMatch = (c: CommonsCandidate, m: CommonsMatch) => !!c.party && m.parties.some((p) => normParty(p) === normParty(c.party));
+const VIA: Record<CommonsMatch['via'], string> = { wikidata: '維基數據', wikipedia: '中文維基百科', commons: '共享資源檔名' };
+
 /**
- * 預設勾選：只有在恰好一位結果是「臺灣的政治人物」時才預選，其餘讓管理員自己判斷。
- * （實測：2022 年南投縣長候選人王永慶，維基數據上同名的是台塑創辦人——臺灣人，但不是政治人物。）
+ * 預設勾選：只有在恰好一位結果是「臺灣的政治人物」時才預選；有好幾位時，再看政黨是否相同，
+ * 恰好一位相同才預選。其餘讓管理員自己判斷。
+ * （實測：2022 年南投縣長候選人王永慶，維基數據上同名的是台塑創辦人——臺灣人，但不是政治人物；
+ *   2026 年南投縣長候選人許淑華，同名的另一位是民進黨籍臺北市議員。）
  */
 function preselect(list: CommonsCandidate[]): Record<number, string> {
   const out: Record<number, string> = {};
   for (const c of list) {
     const strong = c.matches.filter((m) => m.taiwan && m.politician);
+    const sameParty = strong.filter((m) => partyMatch(c, m));
     if (strong.length === 1) out[c.id] = strong[0].file;
+    else if (sameParty.length === 1) out[c.id] = sameParty[0].file;
   }
   return out;
 }
@@ -67,12 +76,18 @@ export function CommonsFinder({ electionId, onDone }: { electionId: number; onDo
     setStatus(null);
     setResult(null);
     try {
-      const r = await api<{ candidates: CommonsCandidate[]; excluded: number }>(`/api/admin/elections/${electionId}/commons-photos${all ? '?all=1' : ''}`);
+      const r = await api<{ candidates: CommonsCandidate[]; excluded: number; limited: boolean }>(`/api/admin/elections/${electionId}/commons-photos${all ? '?all=1' : ''}`);
       setResult(r);
       setPicked(preselect(r.candidates));
       const found = r.candidates.filter((c) => c.matches.length).length;
       if (!r.candidates.length) setStatus({ ok: true, text: '所有候選人都已經有照片了（勾選「包含已有照片的候選人」可重新搜尋）' });
-      else setStatus({ ok: true, text: `搜尋了 ${r.candidates.length} 位候選人，其中 ${found} 位找到可用的照片。請逐一確認是本人再套用。` });
+      else
+        setStatus({
+          ok: true,
+          text:
+            `搜尋了 ${r.candidates.length} 位候選人，其中 ${found} 位找到可用的照片。請逐一確認是本人再套用。` +
+            (r.limited ? '（維基共享資源的檔名搜尋暫時被限制，還有人沒查到；套用完後過幾分鐘再按一次「開始搜尋」，會接著找剩下的人。）' : ''),
+        });
     } catch (err) {
       setStatus({ ok: false, text: errorText(err) });
     } finally {
@@ -109,7 +124,7 @@ export function CommonsFinder({ electionId, onDone }: { electionId: number; onDo
     <section className="card section">
       <h2>從維基共享資源找照片</h2>
       <p className="help">
-        用候選人姓名到維基數據查詢，只列出可以自由使用的照片（CC BY、CC BY-SA、CC0、公有領域、標示出處授權）。套用後轉播畫面會自動標示作者與授權，這是授權條件要求的。
+        用候選人姓名依序查詢維基數據、中文維基百科與維基共享資源的檔名，只列出可以自由使用的照片（CC BY、CC BY-SA、CC0、公有領域、標示出處授權）。套用後轉播畫面會自動標示作者與授權，這是授權條件要求的。
         同名同姓的人很多，<strong>請確認照片是本人</strong>再套用；新人或小黨候選人通常找不到，請改用下面的批次上傳。
       </p>
       <div className="row row-center">
@@ -148,6 +163,13 @@ export function CommonsFinder({ electionId, onDone }: { electionId: number; onDo
                         <span className="commons-meta">
                           <span>{m.description || '（沒有描述）'}</span>
                           {!(m.taiwan && m.politician) && <span className="chip chip-wait">可能不是同一人</span>}
+                          {m.parties.length > 0 && (
+                            <span className={partyMatch(c, m) ? '' : 'muted'}>
+                              {m.parties.join('、')}
+                              {partyMatch(c, m) ? '（政黨相同）' : c.party ? '（政黨不同）' : ''}
+                            </span>
+                          )}
+                          <span className="muted">來源：{VIA[m.via]}</span>
                           {m.birthYear && <span className="muted">{m.birthYear} 年生</span>}
                           <span className="muted">{m.author}／{m.license}</span>
                           <a href={m.sourceUrl} target="_blank" rel="noreferrer noopener">檔案頁 ↗</a>

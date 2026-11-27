@@ -19,6 +19,12 @@ function fakeWikimedia(calls: string[]) {
     if (url.hostname === 'query.wikidata.org') {
       assert.equal(init?.method, 'POST');
       assert.match(String(init?.body), /query=/);
+      const query = new URLSearchParams(String(init?.body)).get('query') ?? '';
+      if (/VALUES \?item/.test(query)) {
+        // 中文維基百科找到的項目：補查國籍、職業、政黨
+        assert.match(query, /wd:Q9/);
+        return json({ results: { bindings: [{ item: uri('http://www.wikidata.org/entity/Q9'), tw: lit('1'), pol: lit('1'), party: lit('中國國民黨', 'zh-tw') }] } });
+      }
       return json({
         results: {
           bindings: [
@@ -30,6 +36,24 @@ function fakeWikimedia(calls: string[]) {
         },
       });
     }
+    if (url.hostname === 'zh.wikipedia.org') {
+      assert.equal(url.searchParams.get('pilicense'), 'free');
+      calls.push(`titles=${url.searchParams.get('titles')}`);
+      return json({
+        query: {
+          converted: [{ from: '乙候選人', to: '乙候选人' }],
+          redirects: [{ from: '乙候选人', to: '乙某' }],
+          pages: [
+            { title: '乙某', pageimage: 'Yi_wiki.jpg', description: '臺灣政治人物', pageprops: { wikibase_item: 'Q9' } },
+            { title: '查無此人', missing: true },
+          ],
+        },
+      });
+    }
+    if (url.hostname === 'commons.wikimedia.org' && url.searchParams.get('list') === 'search') {
+      calls.push(`search=${url.searchParams.get('srsearch')}`);
+      return json({ query: { search: [{ title: 'File:查無此人，2026年臺北市長選舉候選人肖像照.jpg' }, { title: 'File:別人.jpg' }, { title: 'File:查無此人甲肖像.jpg' }, { title: 'File:查無此人.pdf' }] } });
+    }
     if (url.hostname === 'commons.wikimedia.org' && url.pathname === '/w/api.php') {
       const meta = (artist: string, license: string) => ({ Artist: { value: artist }, LicenseShortName: { value: license } });
       return json({
@@ -39,6 +63,8 @@ function fakeWikimedia(calls: string[]) {
             { title: 'File:Jia portrait.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Jia_portrait.jpg', extmetadata: meta('<a href="//x">王&amp;攝影</a>', 'CC BY-SA 4.0') }] },
             { title: 'File:Jia other.png', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/b.png', descriptionurl: '', extmetadata: meta('', 'CC0') }] },
             { title: 'File:Yi.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/c.jpg', descriptionurl: '', extmetadata: meta('某人', 'CC BY-NC-SA 2.0') }] },
+            { title: 'File:Yi wiki.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/d.jpg', descriptionurl: '', extmetadata: meta('丙', 'CC BY 4.0') }] },
+            { title: 'File:查無此人，2026年臺北市長選舉候選人肖像照.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/e.jpg', descriptionurl: '', extmetadata: meta('丁', 'CC0') }] },
           ],
         },
       });
@@ -61,9 +87,14 @@ test('授權過濾與作者欄位整理', () => {
 test('維基共享資源搜尋：依可信度排序、剔除不可用授權、組出出處文字', async () => {
   const calls: string[] = [];
   fakeWikimedia(calls);
-  const { matches, excluded } = await findPhotos(['甲候選人', '乙候選人', '甲候選人', '查無此人']);
-  assert.deepEqual(calls, ['query.wikidata.org', 'commons.wikimedia.org'], '所有姓名只發一次查詢');
-  assert.ok(!calls.includes('www.wikidata.org'));
+  const { matches, excluded, limited } = await findPhotos(['甲候選人', '乙候選人', '甲候選人', { name: '查無此人', area: '臺北市' }], { commonsGapMs: 0 });
+  assert.deepEqual(
+    calls,
+    // 中文維基百科只查還沒找到本人的；它找到乙候選人後，檔名搜尋只剩查無此人
+    ['query.wikidata.org', 'zh.wikipedia.org', 'titles=乙候選人|查無此人', 'query.wikidata.org', 'commons.wikimedia.org', 'search=intitle:"查無此人"', 'commons.wikimedia.org'],
+    '每一層的所有姓名合併成一次查詢（檔名搜尋除外）',
+  );
+  assert.equal(limited, false);
   const jia = matches.get('甲候選人')!;
   assert.equal(jia.length, 2);
   assert.equal(jia[0].qid, 'Q1', '臺灣的政治人物排第一');
@@ -71,8 +102,20 @@ test('維基共享資源搜尋：依可信度排序、剔除不可用授權、�
   assert.equal(jia[0].birthYear, '1970');
   assert.equal(jia[0].credit, '王&攝影／CC BY-SA 4.0／維基共享資源');
   assert.equal(jia[1].author, '作者不詳');
-  assert.equal(matches.has('乙候選人'), false);
+  // 乙候選人：維基數據的照片授權是 NC（略過），改用中文維基百科條目的主圖（經繁簡轉換與重新導向）
+  const yi = matches.get('乙候選人')!;
+  assert.equal(yi.length, 1);
+  assert.equal(yi[0].file, 'Yi wiki.jpg');
+  assert.equal(yi[0].via, 'wikipedia');
+  assert.ok(yi[0].taiwan && yi[0].politician);
+  assert.deepEqual(yi[0].parties, ['中國國民黨']);
   assert.equal(excluded, 1);
+  // 查無此人：只有維基共享資源上的檔名提到，檔名有縣市與「候選人」才算可信
+  const nobody = matches.get('查無此人')!;
+  assert.equal(nobody.length, 1);
+  assert.equal(nobody[0].via, 'commons');
+  assert.ok(nobody[0].taiwan && nobody[0].politician);
+  assert.equal(nobody[0].credit, '丁／CC0／維基共享資源');
 });
 
 test('後台 API：搜尋照片、經伺服器下載、上傳後出處顯示在看板資料中', async () => {
@@ -163,4 +206,26 @@ test('依檔名配對候選人', () => {
   const single = cands.filter((c) => c.contestId === 10);
   assert.equal(matchPhotoFile('12.jpg', single).candidateId, 2);
   assert.equal(matchPhotoFile('第6號.png', single).candidateId, 1);
+});
+
+test('照片搜尋：同名的人依政黨排序；檔名搜尋被限制時停下並回報', async () => {
+  setCommonsFetch(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.hostname === 'query.wikidata.org') {
+      const query = new URLSearchParams(String(init?.body)).get('query') ?? '';
+      if (/VALUES \?item/.test(query)) return json({ results: { bindings: [] } });
+      const row = (q: string, file: string, party: string) => ({ item: uri(`http://www.wikidata.org/entity/${q}`), name: lit('許某', 'zh'), image: fp(file), tw: lit('1'), pol: lit('1'), party: lit(party, 'zh') });
+      return json({ results: { bindings: [row('Q1', 'A.jpg', '民主進步黨'), row('Q2', 'B.jpg', '中國國民黨'), row('Q2', 'B.jpg', '無黨團結聯盟')] } });
+    }
+    if (url.hostname === 'zh.wikipedia.org') return json({ query: { pages: [{ title: '王某', missing: true }] } });
+    if (url.searchParams.get('list') === 'search') return new Response('You are making too many requests to the API.', { status: 429 });
+    const pages = ['A.jpg', 'B.jpg'].map((f) => ({ title: `File:${f}`, imageinfo: [{ thumburl: `https://upload.wikimedia.org/${f}`, extmetadata: { LicenseShortName: { value: 'CC0' } } }] }));
+    return json({ query: { pages } });
+  });
+  const { matches, limited } = await findPhotos([{ name: '許某', party: '中國國民黨' }, { name: '王某' }, { name: '李某' }], { commonsGapMs: 0 });
+  const xu = matches.get('許某')!;
+  assert.deepEqual(xu.map((m) => m.qid), ['Q2', 'Q1'], '政黨相同的排前面');
+  assert.deepEqual(xu[0].parties, ['中國國民黨', '無黨團結聯盟']);
+  assert.equal(limited, true);
+  assert.equal(matches.has('王某'), false);
 });

@@ -240,10 +240,11 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
       )
       .all(election.id) as { id: number; number: number; name: string; party: string; photo_version: string; contest_id: number; contest_name: string; area_code: string }[];
     const wanted = rows.filter((r) => all || !r.photo_version);
-    if (!wanted.length) return { candidates: [], excluded: 0 };
-    const { matches, excluded } = await findPhotos(wanted.map((r) => r.name));
+    if (!wanted.length) return { candidates: [], excluded: 0, limited: false };
+    const { matches, excluded, limited } = await findPhotos(wanted.map((r) => ({ name: r.name, party: r.party, area: ctx.areas.name(r.area_code) })));
     return {
       excluded,
+      limited,
       candidates: wanted.map((r) => ({
         id: r.id,
         number: r.number,
