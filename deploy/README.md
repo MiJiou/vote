@@ -38,6 +38,17 @@ npm run setup:2026
 名單已和中選會 2026 選舉資訊網的官方候選人資料逐筆核對過（號次、姓名全部一致），建立後仍建議在後台「候選人」頁看一眼。
 照片可以在同一頁用「從維基共享資源找照片」和「批次上傳」處理。
 
+## 步驟三之前：把現有網域交給 Cloudflare 管理（網域不是在 Cloudflare 買的才需要）
+
+1. 登入 <https://dash.cloudflare.com/>，選 **Add a domain**（或 **Onboard a domain**），輸入網域（例如 `mijiou.com`），方案選 **Free**。
+2. Cloudflare 會掃描現有的 DNS 紀錄並列出來。**原本有網站或 Email 的網域，請確認紀錄都在**（特別是 MX），沒問題就繼續。
+3. Cloudflare 會給你兩個名稱伺服器，長得像 `xxx.ns.cloudflare.com`、`yyy.ns.cloudflare.com`。
+4. 到你當初買網域的地方（註冊商的網域管理頁），找「修改 DNS 伺服器」或「名稱伺服器（Name Server）」，
+   把原本的伺服器（例如 `ADMNS1.HINET.NET`、`ADMNS2.HINET.NET`）**全部換成** Cloudflare 給的那兩個。
+   若有開啟 DNSSEC，要先在註冊商那邊關掉。
+5. 回到 Cloudflare 按 **Check nameservers**。通常幾分鐘到幾小時內生效，Cloudflare 會寄信通知「is now active」，網域狀態變成 **Active** 後才能做步驟三。
+   最久可能要一天，**請提早處理**；選舉當天還沒生效的話，備案是在 Cloudflare 另外買一個網域（立即生效）。
+
 ## 步驟三：建立 Cloudflare Tunnel
 
 1. 登入 <https://dash.cloudflare.com/>，到 **Networking › Tunnels**，按 **Create Tunnel**。
