@@ -3,6 +3,12 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { AreaRow, Cand, ElectionInfo, Totals } from '../api';
 import { num, pct, ratio } from '../format';
+import { useTweened } from '../motion';
+
+/** 數字從 0（或上一個值）滾動到目前的值。 */
+export function CountUp({ value }: { value: number }) {
+  return <>{num(useTweened(value, 900, 0))}</>;
+}
 
 export const OTHER_COLOR = '#8A8983';
 
@@ -70,7 +76,9 @@ export function CandidateCards({ candidates, totals, lead: kind }: { candidates:
               {c.runningMate && <span className="cand-mate">{c.runningMate}</span>}
             </div>
             <div className="cand-figures">
-              <span className="cand-votes">{num(votes)}</span>
+              <span className="cand-votes">
+                <CountUp value={votes} />
+              </span>
               <span className="cand-unit">票</span>
               <span className="cand-pct">{pct(votes, totals.valid)}</span>
             </div>
@@ -168,7 +176,9 @@ export function RankedRows({ candidates, totals, lead, whole }: { candidates: Ca
               <span style={{ width: `${(votes / top) * 100}%`, background: c.color }} />
             </div>
             <div className="ranked-figures">
-              <span className="ranked-votes">{num(votes)}</span>
+              <span className="ranked-votes">
+                <CountUp value={votes} />
+              </span>
               <span className="ranked-pct">{pct(votes, totals.valid)}</span>
             </div>
           </li>
@@ -225,15 +235,15 @@ export function Stats({ totals, unitLevel }: { totals: Totals; unitLevel: Electi
           <span style={{ width: `${p.share * 100}%` }} />
         </div>
       </div>
-      <Stat label="投票數" value={num(totals.total)} />
-      <Stat label="有效票" value={num(totals.valid)} />
-      <Stat label="無效票" value={num(totals.invalid)} />
+      <Stat label="投票數" value={<CountUp value={totals.total} />} />
+      <Stat label="有效票" value={<CountUp value={totals.valid} />} />
+      <Stat label="無效票" value={<CountUp value={totals.invalid} />} />
       <Stat label="投票率" value={ratio(totals.turnout)} hint={totals.turnout === null ? '確定開完的地區才計入' : totals.done ? undefined : '已開完的地區'} />
     </div>
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
   return (
     <div className="card stat">
       <div className="stat-label">{label}</div>

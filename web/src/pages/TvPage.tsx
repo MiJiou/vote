@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { NATION, useLive, useStreamStatus } from '../api';
@@ -6,6 +6,7 @@ import type { Cand, ContestSummary, ElectionInfo, Summary, Totals } from '../api
 import { num, pct, ratio } from '../format';
 import { TaiwanMap } from '../components/TaiwanMap';
 import { leaderOf, progressOf, ranked } from '../components/results';
+import { useChanged, useFlip, useTweened } from '../motion';
 import './tv.css';
 
 /**
@@ -86,22 +87,34 @@ function Controls({ id }: { id: number }) {
 
 // ---------- 小元件 ----------
 
-/** 新聞台常見的票數寫法：12 萬 2584。 */
-function Wan({ n }: { n: number }) {
-  if (n < 10000) {
-    return (
-      <span className="wan" aria-label={`${num(n)} 票`}>
-        <span className="wan-major">{n}</span>
-      </span>
+/**
+ * 新聞台常見的票數寫法：12 萬 2584。
+ * 數字變動時從舊值滾到新值；countUp 時第一次出現會從 0 滾上來。
+ */
+function Wan({ n, countUp = false }: { n: number; countUp?: boolean }) {
+  const shown = useTweened(n, countUp ? 1300 : 900, countUp ? 0 : undefined);
+  const bump = useChanged(n);
+  const body =
+    shown < 10000 ? (
+      <span className="wan-major">{shown}</span>
+    ) : (
+      <>
+        <span className="wan-major">{Math.floor(shown / 10000)}</span>
+        <span className="wan-unit">萬</span>
+        <span className="wan-rest">{String(shown % 10000).padStart(4, '0')}</span>
+      </>
     );
-  }
   return (
-    <span className="wan" aria-label={`${num(n)} 票`}>
-      <span className="wan-major">{Math.floor(n / 10000)}</span>
-      <span className="wan-unit">萬</span>
-      <span className="wan-rest">{String(n % 10000).padStart(4, '0')}</span>
+    <span className={`wan${bump ? ' is-bump' : ''}`} aria-label={`${num(n)} 票`}>
+      {body}
     </span>
   );
+}
+
+/** 得票率也跟著滾動。 */
+function Pct({ votes, valid }: { votes: number; valid: number }) {
+  const shown = useTweened(valid ? Math.round((votes / valid) * 10000) : 0, 900, 0);
+  return <span className="tv-pct">{valid ? `${(shown / 100).toFixed(2)}%` : '—'}</span>;
 }
 
 const PARTY_SHORT: [RegExp, string][] = [
@@ -229,15 +242,15 @@ function Stage({ summary }: { summary: Summary }) {
         {national ? (
           <NationalPanel contest={ready[0]} final={final} />
         ) : (
-          focus.map((c) => <FocusPanel key={c.id} contest={c} final={final} election={election} />)
+          focus.map((c, i) => <FocusPanel key={c.id} contest={c} final={final} election={election} index={i} />)
         )}
         {!national && focus.length < 2 && <div />}
         <SidePanel summary={summary} national={national} />
       </div>
       <Headline summary={summary} national={national} />
       <div className="tv-strip" key={page}>
-        {strip.map((item) => (
-          <MiniPanel key={item.key} item={item} final={final} />
+        {strip.map((item, i) => (
+          <MiniPanel key={item.key} item={item} final={final} index={i} />
         ))}
       </div>
       <Footer summary={summary} items={items} />
@@ -246,21 +259,25 @@ function Stage({ summary }: { summary: Summary }) {
 }
 
 /** 一個選舉區的大版面：直排地名＋前兩名。 */
-function FocusPanel({ contest, final, election }: { contest: ContestSummary; final: boolean; election: ElectionInfo }) {
+function FocusPanel({ contest, final, election, index }: { contest: ContestSummary; final: boolean; election: ElectionInfo; index: number }) {
   const t = contest.totals;
   const top = topOf(contest.candidates, t, 2);
   const others = contest.candidates.length - top.length;
   const p = progressOf(t, election.unitLevel);
   const lead = t.leaderId !== null && top.length > 1 ? (t.votes[top[0].id] ?? 0) - (t.votes[top[1].id] ?? 0) : null;
+  const body = useRef<HTMLDivElement>(null);
+  useFlip(body, top.map((c) => c.id).join(','));
+  const swapped = useLeadSwap(t.leaderId);
   return (
-    <section className="tv-card tv-focus" aria-label={contest.name}>
+    <section className="tv-card tv-focus" aria-label={contest.name} style={{ animationDelay: `${index * 120}ms` }}>
       <Tab text={contest.areaName} />
-      <div className="tv-focus-body">
+      <div className="tv-focus-body" ref={body}>
+        {swapped && <div className="tv-flash" role="status">領先易位</div>}
         {top.map((c) => {
           const votes = t.votes[c.id] ?? 0;
           const winner = isWinner(c, t, final);
           return (
-            <div key={c.id} className={`tv-row${t.leaderId === c.id ? ' is-lead' : ''}`} style={colorVar(c)}>
+            <div key={c.id} data-flip={c.id} className={`tv-row${t.leaderId === c.id ? ' is-lead' : ''}`} style={colorVar(c)}>
               <Portrait c={c} winner={winner} />
               <div className="tv-row-main">
                 <div className="tv-row-head">
@@ -268,13 +285,13 @@ function FocusPanel({ contest, final, election }: { contest: ContestSummary; fin
                   <span className={`tv-name${nameClass(c.name)}`}>{c.name}</span>
                 </div>
                 <div className={`tv-votes${votes >= 1_000_000 ? ' is-wide' : ''}`}>
-                  <Wan n={votes} />
+                  <Wan n={votes} countUp />
                 </div>
                 <div className="tv-meter">
                   <span className="tv-bar">
                     <span style={{ width: `${share(c, t)}%` }} />
                   </span>
-                  <span className="tv-pct">{pct(votes, t.valid)}</span>
+                  <Pct votes={votes} valid={t.valid} />
                 </div>
               </div>
             </div>
@@ -318,13 +335,13 @@ function NationalPanel({ contest, final }: { contest: ContestSummary; final: boo
                 </div>
               </div>
               <div className="tv-votes">
-                <Wan n={votes} />
+                <Wan n={votes} countUp />
               </div>
               <div className="tv-meter">
                 <span className="tv-bar">
                   <span style={{ width: `${share(c, t)}%` }} />
                 </span>
-                <span className="tv-pct">{pct(votes, t.valid)}</span>
+                <Pct votes={votes} valid={t.valid} />
               </div>
               <p className="tv-col-foot">{leading && lead !== null && lead > 0 ? `領先 ${num(lead)} 票` : ' '}</p>
             </div>
@@ -400,7 +417,7 @@ function SidePanel({ summary, national }: { summary: Summary; national: boolean 
           ))}
         </ul>
       )}
-      <div className="tv-progress">
+      <div className={`tv-progress${shareDone > 0 && shareDone < 1 && !final ? ' is-running' : ''}`}>
         <span className="tv-bar">
           <span style={{ width: `${shareDone * 100}%` }} />
         </span>
@@ -413,7 +430,14 @@ function SidePanel({ summary, national }: { summary: Summary; national: boolean 
 function Headline({ summary, national }: { summary: Summary; national: boolean }) {
   const { election, contests } = summary;
   const tv = election.tv;
-  if (tv.headline) return <div className={`tv-headline is-${tv.headlineStyle}`}>{tv.headline}</div>;
+  if (tv.headline) {
+    return (
+      <div className={`tv-headline is-${tv.headlineStyle}`} key={tv.headline}>
+        <span className="tv-headline-tag">{tv.headlineStyle === 'alert' ? '快訊' : '最新'}</span>
+        <span className="tv-headline-text">{tv.headline}</span>
+      </div>
+    );
+  }
   // 沒有設定快訊時，自動帶出選舉名稱與進度。
   let text = election.name;
   if (election.status === 'final') text += '　開票完成';
@@ -421,14 +445,19 @@ function Headline({ summary, national }: { summary: Summary; national: boolean }
     const p = progressOf(contests[0].totals, election.unitLevel);
     if (p.done > 0) text += `　開票進度 ${(p.share * 100).toFixed(1)}%`;
   }
-  return <div className="tv-headline is-auto">{text}</div>;
+  return (
+    <div className="tv-headline is-auto">
+      <span className="tv-headline-tag">{election.status === 'final' ? '結果' : '開票'}</span>
+      <span className="tv-headline-text">{text}</span>
+    </div>
+  );
 }
 
 /** 底部小卡：一個地區的前兩名。 */
-function MiniPanel({ item, final }: { item: StripItem; final: boolean }) {
+function MiniPanel({ item, final, index }: { item: StripItem; final: boolean; index: number }) {
   const top = topOf(item.candidates, item.totals, 2);
   return (
-    <section className="tv-card tv-mini" aria-label={item.title}>
+    <section className="tv-card tv-mini" aria-label={item.title} style={{ animationDelay: `${index * 90}ms` }}>
       <Tab text={item.title} as="h3" />
       <div className="tv-mini-body">
         {top.map((c) => (
@@ -437,12 +466,56 @@ function MiniPanel({ item, final }: { item: StripItem; final: boolean }) {
             <span className={`tv-name${nameClass(c.name)}`}>{c.name}</span>
             {item.whole && isWinner(c, item.totals, final) && <Stamp />}
             <span className="tv-mini-votes">
-              <Wan n={item.totals.votes[c.id] ?? 0} />
+              <Wan n={item.totals.votes[c.id] ?? 0} countUp />
             </span>
           </div>
         ))}
       </div>
     </section>
+  );
+}
+
+/** 領先者換人（不是第一次顯示）時，回傳 true 約 3 秒。 */
+function useLeadSwap(leaderId: number | null): boolean {
+  const prev = useRef(leaderId);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const before = prev.current;
+    prev.current = leaderId;
+    if (before === null || leaderId === null || before === leaderId) return;
+    setOn(true);
+    const t = setTimeout(() => setOn(false), 3200);
+    return () => clearTimeout(t);
+  }, [leaderId]);
+  return on;
+}
+
+/**
+ * 底部跑馬燈：連續捲動。每一輪只捲幾則（約 1 分鐘），捲完才換下一批並帶入最新數字，
+ * 畫面不會跳動，數字也不會落後太久。
+ */
+const TICKER_BATCH = 5;
+function Ticker({ lines }: { lines: string[] }) {
+  const latest = useRef(lines);
+  latest.current = lines;
+  const [batch, setBatch] = useState(0);
+  const [shown, setShown] = useState(() => lines.slice(0, TICKER_BATCH));
+  const next = () => {
+    const all = latest.current;
+    const batches = Math.max(1, Math.ceil(all.length / TICKER_BATCH));
+    const b = (batch + 1) % batches;
+    setBatch(b);
+    setShown(all.slice(b * TICKER_BATCH, b * TICKER_BATCH + TICKER_BATCH));
+  };
+  const text = shown.join('　｜　');
+  // 固定的閱讀速度：每個字約 0.3 秒。
+  const seconds = Math.max(18, Math.round(text.length * 0.3));
+  return (
+    <p className="tv-ticker">
+      <span className="tv-ticker-track" style={{ animationDuration: `${seconds}s` }} onAnimationIteration={next}>
+        {text}
+      </span>
+    </p>
   );
 }
 
@@ -455,8 +528,6 @@ function Footer({ summary, items }: { summary: Summary; items: StripItem[] }) {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
-  const tick = useTick(6000);
-
   // 跑馬資訊：整體數字＋各地區前兩名，一次一則輪流出現。
   const lines = useMemo(() => {
     const out: string[] = [];
@@ -476,10 +547,16 @@ function Footer({ summary, items }: { summary: Summary; items: StripItem[] }) {
 
   return (
     <footer className="tv-footer">
-      <time className="tv-clock">{clockFormat.format(now)}</time>
-      <p className="tv-ticker" key={tick % lines.length}>
-        {lines[tick % lines.length]}
-      </p>
+      <div className="tv-clockbox">
+        {summary.election.status === 'live' && (
+          <span className={`tv-livebadge${streaming ? '' : ' is-off'}`}>
+            <span className="tv-livebadge-dot" aria-hidden="true" />
+            LIVE
+          </span>
+        )}
+        <time className="tv-clock">{clockFormat.format(now)}</time>
+      </div>
+      <Ticker lines={lines} />
       <p className="tv-note">
         <span className={`tv-live${streaming ? ' is-on' : ''}`} aria-hidden="true" />
         非官方統計・正式結果以中選會公告為準

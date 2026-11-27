@@ -23,6 +23,8 @@
   padding: 26px 50px 22px;
   display: grid;
   grid-template-rows: 600px 86px 218px 76px;
+  /* 欄寬固定為舞台寬度：跑馬燈的長文字不會把版面撐大 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   color: var(--ink);
   color-scheme: light;
@@ -38,10 +40,12 @@
 .tv-message { grid-row: 1 / -1; display: grid; place-items: center; font-size: 48px; color: var(--ink-2); }
 
 .tv-card {
-  background: rgba(255, 255, 255, 0.86);
-  border: 2px solid #fff;
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.74));
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
   border-radius: 18px;
-  box-shadow: 0 10px 28px rgba(26, 52, 86, 0.14);
+  box-shadow: inset 0 1px 0 #fff, 0 2px 6px rgba(26, 52, 86, 0.06), 0 16px 38px rgba(26, 52, 86, 0.16);
+  backdrop-filter: blur(14px) saturate(1.25);
   overflow: hidden;
 }
 
@@ -52,9 +56,10 @@
   align-items: center;
   justify-content: center;
   font-weight: 800;
-  color: var(--ink);
-  background: linear-gradient(180deg, #f7fafc, #e2eaf3);
-  border-right: 2px solid var(--line);
+  color: #fff;
+  background: linear-gradient(180deg, #23476f 0%, #14304f 55%, #0f2540 100%);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 .tv-tab-text { display: flex; flex-direction: column; align-items: center; gap: 0.12em; font-size: 1em; line-height: 1.08; }
@@ -129,7 +134,7 @@
 .tv-top { display: grid; grid-template-columns: 650px 650px 480px; gap: 20px; min-height: 0; }
 .tv-focus { display: flex; }
 .tv-focus > .tv-tab { width: 92px; font-size: 54px; }
-.tv-focus-body { flex: 1; min-width: 0; padding: 14px; display: grid; grid-template-rows: 1fr 1fr auto; gap: 12px; }
+.tv-focus-body { flex: 1; min-width: 0; padding: 14px; display: grid; grid-template-rows: 1fr 1fr auto; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .tv-row {
   display: flex; gap: 16px; padding: 12px; border-radius: 14px; min-height: 0;
   background: linear-gradient(90deg, var(--c-tint), rgba(255, 255, 255, 0.7) 78%);
@@ -145,7 +150,10 @@
 .tv-row .tv-votes { font-size: 88px; }
 .tv-row .tv-votes.is-wide { font-size: 76px; }
 .tv-row .tv-pct { font-size: 34px; }
-.tv-focus-foot { display: flex; justify-content: space-between; gap: 16px; padding: 0 6px; font-size: 24px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+/* 底部說明放不下時，從最後一項（「另有幾位候選人」）開始省略，不會把面板撐寬 */
+.tv-focus-foot { display: flex; justify-content: space-between; gap: 16px; min-width: 0; padding: 0 6px; font-size: 22px; font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; }
+.tv-focus-foot > span { flex: none; }
+.tv-focus-foot > span:last-child:not(:first-child) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* 全國單一選舉區：橫跨兩格，各組候選人並排 */
 .tv-national { grid-column: span 2; }
@@ -262,3 +270,182 @@
   background: rgba(13, 24, 38, 0.82); color: #fff; font: 600 14px/1.4 system-ui, sans-serif; text-decoration: none; cursor: pointer;
 }
 .tv-controls button:hover, .tv-controls a:hover { background: #22405f; }
+
+
+/* =====================================================================
+   動畫與質感（所有動畫在「減少動態效果」設定下會自動關閉，見檔案最後）
+   ===================================================================== */
+
+/* 背景：緩慢移動的光束 */
+.tv-stage::before,
+.tv-stage::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  width: 46%;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.55) 45%, rgba(255, 255, 255, 0) 70%);
+  transform: skewX(-18deg);
+  animation: tv-beam 22s ease-in-out infinite alternate;
+}
+.tv-stage::before { left: -30%; }
+.tv-stage::after { left: 30%; width: 26%; opacity: 0.6; animation-duration: 31s; animation-direction: alternate-reverse; }
+.tv-stage > * { position: relative; z-index: 1; min-width: 0; }
+@keyframes tv-beam { from { transform: translateX(-12%) skewX(-18deg); } to { transform: translateX(95%) skewX(-18deg); } }
+
+/* 大版面切換時滑入 */
+.tv-focus { animation: tv-panel-in 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes tv-panel-in {
+  from { opacity: 0; transform: translateX(46px) scale(0.985); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+.tv-focus > .tv-tab .tv-tab-text span { animation: tv-letter 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.tv-focus > .tv-tab .tv-tab-text span:nth-child(2) { animation-delay: 0.08s; }
+.tv-focus > .tv-tab .tv-tab-text span:nth-child(3) { animation-delay: 0.16s; }
+.tv-focus > .tv-tab .tv-tab-text span:nth-child(4) { animation-delay: 0.24s; }
+@keyframes tv-letter { from { opacity: 0; transform: translateY(-22px); } to { opacity: 1; transform: none; } }
+
+/* 底部小卡：依序翻入 */
+.tv-strip { animation: none; perspective: 1200px; }
+.tv-mini { animation: tv-flip-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: 50% 0; }
+@keyframes tv-flip-in {
+  from { opacity: 0; transform: rotateX(-70deg) translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 領先者：代表色的柔和發光框 */
+.tv-row.is-lead {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 55%, transparent), 0 8px 24px color-mix(in srgb, var(--c) 28%, transparent);
+  animation: tv-lead-glow 3.2s ease-in-out infinite;
+}
+@keyframes tv-lead-glow {
+  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 80%, transparent), 0 10px 30px color-mix(in srgb, var(--c) 40%, transparent); }
+}
+.tv-col.is-lead { box-shadow: 0 10px 30px color-mix(in srgb, var(--c) 26%, transparent); }
+
+/* 票數更新時發光一下 */
+.tv-votes .wan, .tv-mini-votes .wan { transition: transform 0.3s ease; transform-origin: right center; }
+.tv-votes .wan.is-bump { animation: tv-bump 1.2s ease-out; }
+.tv-mini-votes .wan.is-bump { animation: tv-bump-light 1.2s ease-out; }
+@keyframes tv-bump {
+  0% { text-shadow: 0 0 0 transparent; transform: scale(1); }
+  18% { text-shadow: 0 0 22px color-mix(in srgb, var(--c) 60%, #fff); transform: scale(1.03); }
+  100% { text-shadow: 0 0 0 transparent; transform: scale(1); }
+}
+@keyframes tv-bump-light {
+  0% { text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); }
+  20% { text-shadow: 0 0 18px rgba(255, 255, 255, 0.95); }
+  100% { text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); }
+}
+
+/* 得票長條：平滑伸縮＋流動光澤 */
+.tv-bar span { position: relative; overflow: hidden; transition: width 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.tv-bar span::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 25%, rgba(255, 255, 255, 0.6) 50%, transparent 75%);
+  transform: translateX(-120%);
+  animation: tv-shine 3.6s ease-in-out infinite;
+}
+@keyframes tv-shine { 60%, 100% { transform: translateX(120%); } }
+
+/* 開票進度：進行中時有流動斜紋 */
+.tv-progress.is-running .tv-bar span {
+  background-image: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.22) 0 10px, transparent 10px 20px);
+  background-size: 28px 28px;
+  animation: tv-stripes 0.9s linear infinite;
+}
+@keyframes tv-stripes { to { background-position: 28px 0; } }
+
+/* 當選章：蓋章 */
+.tv-stamp { animation: tv-stamp 0.55s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+.tv-mini-row .tv-stamp { animation-name: tv-stamp-small; animation-delay: 0.35s; }
+@keyframes tv-stamp {
+  0% { opacity: 0; transform: scale(2.6) rotate(-34deg); }
+  60% { opacity: 1; transform: scale(0.92) rotate(-10deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-12deg); }
+}
+@keyframes tv-stamp-small {
+  0% { opacity: 0; transform: scale(2.4) rotate(-30deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-12deg); }
+}
+
+/* 領先易位提示 */
+.tv-focus-body { position: relative; }
+.tv-flash {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  padding: 10px 30px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f6c21c, #ffdd4a);
+  color: #1a1a1a;
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  animation: tv-flash 3.2s ease both;
+}
+@keyframes tv-flash {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  10% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  16%, 84% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+}
+
+/* 快訊橫幅：左側標籤、掃入、紅色快訊有光澤掃過 */
+.tv-headline { position: relative; display: flex; align-items: center; justify-content: center; padding: 0 32px 0 210px; overflow: hidden; }
+.tv-headline-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-headline-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 170px;
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  letter-spacing: 0.12em;
+  color: #fff;
+  background: #0f2540;
+  clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%);
+  text-shadow: none;
+}
+.tv-headline.is-alert .tv-headline-tag { background: #fff; color: #c00f26; }
+.tv-headline.is-info .tv-headline-tag { background: #14263b; color: #ffdd4a; }
+.tv-headline.is-alert, .tv-headline.is-info { animation: tv-wipe 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.tv-headline.is-alert .tv-headline-text, .tv-headline.is-info .tv-headline-text { animation: tv-text-in 0.8s 0.15s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes tv-wipe { from { clip-path: inset(0 100% 0 0 round 12px); } to { clip-path: inset(0 0 0 0 round 12px); } }
+@keyframes tv-text-in { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: none; } }
+.tv-headline.is-alert::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.35) 50%, transparent 65%);
+  transform: translateX(-100%);
+  animation: tv-shine 4.5s ease-in-out infinite 1s;
+}
+
+/* 底列：LIVE 標誌、連續捲動的跑馬燈 */
+.tv-clockbox { flex: none; display: flex; align-items: stretch; border-radius: 12px; overflow: hidden; background: #14263b; box-shadow: 0 8px 20px rgba(26, 52, 86, 0.2); }
+.tv-clockbox .tv-clock { border-radius: 0; box-shadow: none; }
+.tv-livebadge { display: flex; align-items: center; gap: 10px; padding: 0 18px; background: #d0112b; color: #fff; font-size: 30px; font-weight: 900; letter-spacing: 0.06em; }
+.tv-livebadge.is-off { background: #6b7a8a; }
+.tv-livebadge-dot { width: 14px; height: 14px; border-radius: 50%; background: #fff; animation: tv-blink 1.4s ease-in-out infinite; }
+@keyframes tv-blink { 50% { opacity: 0.25; } }
+.tv-ticker { display: block; flex: 1; min-width: 0; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; animation: none; line-height: 72px; }
+.tv-ticker-track { display: inline-block; padding-left: 100%; animation: tv-marquee 30s linear infinite; will-change: transform; }
+@keyframes tv-marquee { to { transform: translateX(-100%); } }
+
+/* 系統設定「減少動態效果」時，關閉所有動畫 */
+@media (prefers-reduced-motion: reduce) {
+  .tv-stage *, .tv-stage *::before, .tv-stage *::after, .tv-stage::before, .tv-stage::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .tv-ticker-track { padding-left: 24px; }
+}
