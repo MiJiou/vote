@@ -22,24 +22,57 @@ if (major < 22 || (major === 22 && minor < 18)) {
 }
 
 // 2. 設定檔
-/** 問密碼：同一個輸入介面重複使用，輸入的字不顯示在畫面上。 */
-let rl = null;
-let muted = false;
+/**
+ * 問密碼：自己處理鍵盤輸入並顯示 *，不用 readline 的終端模式
+ * （它會把提示文字清掉，Windows 上看起來就像程式卡住）。
+ */
 function askHidden(question) {
-  if (!rl) {
-    rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    rl._writeToOutput = (s) => {
-      if (!muted) process.stdout.write(s);
-    };
-  }
   process.stdout.write(question);
-  muted = true;
-  return new Promise((resolve) => {
-    rl.question('', (answer) => {
-      muted = false;
-      process.stdout.write('\n');
-      resolve(answer);
+  const stdin = process.stdin;
+  if (!stdin.isTTY) {
+    // 非互動（例如測試時用管線輸入）：讀一行。
+    return new Promise((resolve) => {
+      const rl = createInterface({ input: stdin, terminal: false });
+      rl.once('line', (line) => {
+        rl.close();
+        process.stdout.write('\n');
+        resolve(line);
+      });
     });
+  }
+  return new Promise((resolve) => {
+    let buf = '';
+    stdin.setRawMode(true);
+    stdin.setEncoding('utf8');
+    stdin.resume();
+    const onData = (chunk) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') {
+          stdin.off('data', onData);
+          stdin.setRawMode(false);
+          stdin.pause();
+          process.stdout.write('\n');
+          resolve(buf);
+          return;
+        }
+        if (ch === '\u0003') {
+          process.stdout.write('\n');
+          process.exit(130);
+        }
+        if (ch === '\b' || ch === '\u007f') {
+          if (buf) {
+            buf = buf.slice(0, -1);
+            process.stdout.write('\b \b');
+          }
+          continue;
+        }
+        if (ch >= ' ') {
+          buf += ch;
+          process.stdout.write('*');
+        }
+      }
+    };
+    stdin.on('data', onData);
   });
 }
 
@@ -47,7 +80,7 @@ if (!existsSync('.env')) {
   console.log('第一次執行：建立設定檔。');
   let pw = '';
   for (;;) {
-    pw = (await askHidden('請設定管理員密碼（至少 8 個字元，輸入時不會顯示）：')).trim();
+    pw = (await askHidden('請設定管理員密碼（至少 8 個字元），輸入完按 Enter：')).trim();
     if (pw.length >= 8 && !/[\r\n]/.test(pw)) break;
     console.log('密碼太短，請重新輸入。');
   }
@@ -62,7 +95,6 @@ if (!existsSync('.env')) {
   }
   console.log('已建立 .env（管理員帳號：admin）。\n');
 }
-rl?.close();
 
 // 3. 安裝與建置
 const npm = (args, label) => {
