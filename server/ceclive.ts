@@ -19,12 +19,18 @@ export type CecLiveConfig = {
   auto?: boolean;
   /** 自動尋找時要試的網址開頭；省略則用 DISCOVERY_BASES。 */
   hosts?: string[];
-  /** 何時開始自動尋找（ISO 時間）；省略則為投票日 13:00（臺灣時間）。 */
+  /** 何時開始自動尋找（ISO 時間）；省略則為投票日 10:00（臺灣時間）。 */
   startAt?: string;
 };
 
 /** 中選會歷年開票網站的位置（2022：www.cec.gov.tw、2024：vote2024、2025：vote.cec.gov.tw）。 */
-export const DISCOVERY_BASES = ['https://vote2026.cec.gov.tw/zh-TW', 'https://vote.cec.gov.tw/zh-TW', 'https://www.cec.gov.tw/zh-TW'];
+export const DISCOVERY_BASES = [
+  'https://vote2026.cec.gov.tw/zh-TW',
+  'https://info.cec.gov.tw/vote2026/zh-TW', // 2026 年選舉資訊網所在位置
+  'https://vote.cec.gov.tw/zh-TW',
+  'https://info.cec.gov.tw/zh-TW',
+  'https://www.cec.gov.tw/zh-TW',
+];
 /** 可能的類別代碼：2022 年縣市長是 TC；2026 年中選會資訊網把縣市長標為 C1。 */
 export const DISCOVERY_PREFIXES = ['TC', 'C1', 'C2', 'CC', 'M1', 'T1'];
 

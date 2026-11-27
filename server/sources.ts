@@ -76,8 +76,8 @@ export async function runSource(ctx: Ctx, source: DataSource, force = false): Pr
     } else if (source.kind === 'cec_live') {
       let config = checkConfig(parseConfig(source.config));
       if (config.auto && (!config.base || !config.prefix)) {
-        // 自動尋找：投票日 13:00（或設定的時間）以後，每分鐘最多試一輪。
-        const startAt = Date.parse(config.startAt ?? `${election.date}T13:00:00+08:00`);
+        // 自動尋找：投票日 10:00（或設定的時間）以後，每分鐘最多試一輪。
+        const startAt = Date.parse(config.startAt ?? `${election.date}T10:00:00+08:00`);
         if (Date.now() < startAt) {
           const msg = `等待中選會開票網站上線（${new Date(startAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false })} 起自動尋找）`;
           saveStatus(ctx, source.id, true, msg);
