@@ -41,11 +41,10 @@
 
 .tv-card {
   position: relative;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.74));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.84));
   border: 1.5px solid rgba(255, 255, 255, 0.95);
   border-radius: 18px;
   box-shadow: inset 0 1px 0 #fff, 0 2px 6px rgba(26, 52, 86, 0.06), 0 16px 38px rgba(26, 52, 86, 0.16);
-  backdrop-filter: blur(14px) saturate(1.25);
   overflow: hidden;
 }
 
@@ -56,10 +55,9 @@
   align-items: center;
   justify-content: center;
   font-weight: 800;
-  color: #fff;
-  background: linear-gradient(180deg, #23476f 0%, #14304f 55%, #0f2540 100%);
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.18);
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  color: #1c2f45;
+  background: linear-gradient(180deg, #ffffff 0%, #eef2f6 60%, #e1e7ee 100%);
+  box-shadow: inset -1px 0 0 rgba(20, 38, 59, 0.12);
 }
 
 .tv-tab-text { display: flex; flex-direction: column; align-items: center; gap: 0.12em; font-size: 1em; line-height: 1.08; }
@@ -121,7 +119,8 @@
 }
 .tv-stamp span { color: #d0112b; font-size: 28px; font-weight: 900; letter-spacing: 0.04em; line-height: 1; }
 
-.wan { display: inline-flex; align-items: baseline; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
+.wan { display: inline-flex; align-items: flex-end; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
+.wan .wan-unit { padding-bottom: 0.16em; }
 .wan-unit { font-size: 0.32em; margin: 0 0.12em 0 0.08em; font-weight: 700; letter-spacing: 0; }
 .wan-rest { font-size: 0.74em; }
 .tv-votes { color: var(--c-ink); text-align: right; }
@@ -295,11 +294,7 @@
 @keyframes tv-beam { from { transform: translateX(-12%) skewX(-18deg); } to { transform: translateX(95%) skewX(-18deg); } }
 
 /* 大版面切換時滑入 */
-.tv-focus { animation: tv-panel-in 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-@keyframes tv-panel-in {
-  from { opacity: 0; transform: translateX(46px) scale(0.985); filter: blur(4px); }
-  to { opacity: 1; transform: none; filter: none; }
-}
+
 .tv-focus > .tv-tab .tv-tab-text span { animation: tv-letter 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .tv-focus > .tv-tab .tv-tab-text span:nth-child(2) { animation-delay: 0.08s; }
 .tv-focus > .tv-tab .tv-tab-text span:nth-child(3) { animation-delay: 0.16s; }
@@ -308,20 +303,24 @@
 
 /* 底部小卡：依序翻入 */
 .tv-strip { animation: none; perspective: 1200px; }
-.tv-mini { animation: tv-flip-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: 50% 0; }
-@keyframes tv-flip-in {
-  from { opacity: 0; transform: rotateX(-70deg) translateY(10px); }
-  to { opacity: 1; transform: none; }
-}
+
 
 /* 領先者：代表色的柔和發光框 */
-.tv-row.is-lead {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 55%, transparent), 0 8px 24px color-mix(in srgb, var(--c) 28%, transparent);
-  animation: tv-lead-glow 3.2s ease-in-out infinite;
+.tv-row { position: relative; }
+.tv-row.is-lead { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 55%, transparent), 0 8px 24px color-mix(in srgb, var(--c) 26%, transparent); }
+/* 發光用一層獨立的光暈、只改透明度，不必每一格畫面重繪陰影 */
+.tv-row.is-lead::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  box-shadow: 0 0 0 3px var(--c), 0 0 28px color-mix(in srgb, var(--c) 55%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: tv-glow-pulse 3.2s ease-in-out infinite;
+  will-change: opacity;
 }
-@keyframes tv-lead-glow {
-  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 80%, transparent), 0 10px 30px color-mix(in srgb, var(--c) 40%, transparent); }
-}
+@keyframes tv-glow-pulse { 50% { opacity: 0.65; } }
 .tv-col.is-lead { box-shadow: 0 10px 30px color-mix(in srgb, var(--c) 26%, transparent); }
 
 /* 票數更新時發光一下 */
@@ -449,3 +448,120 @@
   }
   .tv-ticker-track { padding-left: 24px; }
 }
+
+
+/* ===== 電視台式推移轉場（舊的離場、新的同時進場） ===== */
+.tv-swap { display: grid; min-width: 0; min-height: 0; }
+.tv-swap > .tv-swap-in, .tv-swap > .tv-swap-out { grid-area: 1 / 1; display: flex; min-width: 0; min-height: 0; }
+.tv-swap > div > * { flex: 1; min-width: 0; }
+.tv-swap-out { pointer-events: none; z-index: 0; }
+.tv-swap-in { z-index: 1; }
+
+/* 大版面：舊的往左推出，新的從右推入 */
+/* 先讓舊的俐落地推出（0.4 秒），新的再接著推入，兩者不重疊 */
+.tv-swap-panel .tv-swap-in > .tv-focus { animation: tv-push-in 0.75s cubic-bezier(0.16, 0.84, 0.3, 1) both; animation-delay: calc(var(--delay, 0ms) + 380ms); }
+.tv-swap-panel .tv-swap-out > .tv-focus { animation: tv-push-out 0.4s cubic-bezier(0.55, 0, 0.8, 0.2) both; animation-delay: var(--delay, 0ms); }
+@keyframes tv-push-in { from { opacity: 0; transform: translateX(120px); } 40% { opacity: 1; } to { opacity: 1; transform: none; } }
+@keyframes tv-push-out { from { opacity: 1; transform: none; } 70% { opacity: 0; } to { opacity: 0; transform: translateX(-120px); } }
+
+/* 底部小卡：舊的一張張翻上去，新的一張張翻下來 */
+.tv-swap-strip .tv-strip { height: 100%; }
+.tv-swap-in .tv-mini { animation: tv-card-down 0.6s cubic-bezier(0.16, 0.84, 0.3, 1) both; animation-delay: calc(420ms + var(--i, 0) * 80ms); transform-origin: 50% 0; }
+.tv-swap-out .tv-mini { animation: tv-card-up 0.32s cubic-bezier(0.55, 0, 0.8, 0.2) both; animation-delay: calc(var(--i, 0) * 50ms); transform-origin: 50% 100%; }
+@keyframes tv-card-down { from { opacity: 0; transform: rotateX(-80deg); } to { opacity: 1; transform: none; } }
+@keyframes tv-card-up { from { opacity: 1; transform: none; } to { opacity: 0; transform: rotateX(80deg); } }
+
+/* 快訊：舊的往上滑走，新的掃入 */
+.tv-swap-headline .tv-swap-out > .tv-headline { animation: tv-head-out 0.35s cubic-bezier(0.55, 0, 0.8, 0.2) both; }
+.tv-swap-headline .tv-swap-in > .tv-headline.is-alert, .tv-swap-headline .tv-swap-in > .tv-headline.is-info { animation-delay: 0.3s; }
+.tv-swap-headline .tv-swap-in > .tv-headline.is-auto { animation: tv-text-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes tv-head-out { to { opacity: 0; transform: translateY(-30px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-swap-out { display: none !important; }
+}
+
+
+/* ===== 仿電視台開票版型的細節 ===== */
+
+/* 快訊橫幅：左側白框（開票倒數／開票進度），預設深藍底黃字 */
+.tv-headline { padding-left: 250px; }
+.tv-headline-tag { display: none; }
+.tv-headline-box {
+  position: absolute;
+  left: 8px;
+  top: 7px;
+  bottom: 7px;
+  width: 224px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #e9eef3);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.06);
+  text-shadow: none;
+  letter-spacing: 0;
+}
+.tv-hb-label { font-size: 22px; font-weight: 800; color: #3b4b5c; line-height: 1; }
+.tv-hb-value { display: inline-flex; align-items: flex-end; font-size: 40px; font-weight: 900; color: #c8102e; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.tv-headline.is-auto { background: linear-gradient(180deg, #34475e, #233548); color: #ffe14d; font-size: 50px; font-weight: 900; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
+.tv-headline-chip {
+  display: inline-block;
+  margin-right: 22px;
+  padding: 2px 14px;
+  border-radius: 8px;
+  background: #fff;
+  color: #c8102e;
+  font-size: 38px;
+  vertical-align: 4px;
+  text-shadow: none;
+}
+
+/* 底部小卡：號次圓圈、未開出時灰色、色條有光澤 */
+.tv-mini-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 45% 0;
+  border-radius: 10px 10px 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.04));
+  pointer-events: none;
+}
+.tv-mini-row > * { position: relative; }
+.tv-mini-row > .tv-stamp { position: absolute; }
+.tv-mini-no {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff, #dfe6ee 70%);
+  color: var(--c-ink);
+  font-size: 24px;
+  font-weight: 900;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.tv-mini-row.is-empty { background: linear-gradient(180deg, #e9edf2, #d3dae2); color: #2b3a4b; }
+.tv-mini-row.is-empty .tv-name, .tv-mini-row.is-empty .tv-mini-votes { text-shadow: none; }
+.tv-mini-row.is-empty .tv-mini-no { color: #6b7a8a; }
+.tv-mini-row.is-empty .tv-mini-votes { opacity: 0.55; }
+.tv-mini-row { transition: background 0.8s ease, color 0.8s ease; }
+
+/* 大版面：色塊加上光澤 */
+.tv-row::before, .tv-col::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 55% 0;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+.tv-col { position: relative; }
+.tv-row > *, .tv-col > * { position: relative; }
+
+/* 領先政黨很多時縮小、必要時換行，不會超出面板 */
+.tv-tally { flex-wrap: wrap; row-gap: 6px; column-gap: 18px; padding: 0 8px; }
+.tv-tally.is-many { column-gap: 12px; }
+.tv-tally.is-many li { font-size: 26px; gap: 6px; }
+.tv-tally.is-many .tv-party { width: 30px; height: 30px; font-size: 19px; border-radius: 7px; }

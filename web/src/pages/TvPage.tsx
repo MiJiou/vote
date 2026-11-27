@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { CSSProperties } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { NATION, useLive, useStreamStatus } from '../api';
@@ -6,7 +7,8 @@ import type { Cand, ContestSummary, ElectionInfo, Summary, Totals } from '../api
 import { num, pct, ratio } from '../format';
 import { TaiwanMap } from '../components/TaiwanMap';
 import { leaderOf, progressOf, ranked } from '../components/results';
-import { useChanged, useFlip, useTweened } from '../motion';
+import { useFlip } from '../motion';
+import { FrozenContext, Odometer } from '../components/Odometer';
 import './tv.css';
 
 /**
@@ -88,33 +90,65 @@ function Controls({ id }: { id: number }) {
 // ---------- 小元件 ----------
 
 /**
- * 新聞台常見的票數寫法：12 萬 2584。
- * 數字變動時從舊值滾到新值；countUp 時第一次出現會從 0 滾上來。
+ * 新聞台常見的票數寫法：12 萬 2584。每一位數字都是滾輪，數字改變時滾到新的值；
+ * countUp 時第一次出現會從 0 滾上來。
  */
 function Wan({ n, countUp = false }: { n: number; countUp?: boolean }) {
-  const shown = useTweened(n, countUp ? 1300 : 900, countUp ? 0 : undefined);
-  const bump = useChanged(n);
-  const body =
-    shown < 10000 ? (
-      <span className="wan-major">{shown}</span>
-    ) : (
-      <>
-        <span className="wan-major">{Math.floor(shown / 10000)}</span>
-        <span className="wan-unit">萬</span>
-        <span className="wan-rest">{String(shown % 10000).padStart(4, '0')}</span>
-      </>
+  if (n < 10000) {
+    return (
+      <span className="wan" aria-label={`${num(n)} 票`}>
+        <Odometer className="wan-major" text={String(n)} rollIn={countUp} />
+      </span>
     );
+  }
   return (
-    <span className={`wan${bump ? ' is-bump' : ''}`} aria-label={`${num(n)} 票`}>
-      {body}
+    <span className="wan" aria-label={`${num(n)} 票`}>
+      <Odometer className="wan-major" text={String(Math.floor(n / 10000))} rollIn={countUp} />
+      <span className="wan-unit">萬</span>
+      <Odometer className="wan-rest" text={String(n % 10000).padStart(4, '0')} rollIn={countUp} />
     </span>
   );
 }
 
-/** 得票率也跟著滾動。 */
+/** 得票率也是滾輪。 */
 function Pct({ votes, valid }: { votes: number; valid: number }) {
-  const shown = useTweened(valid ? Math.round((votes / valid) * 10000) : 0, 900, 0);
-  return <span className="tv-pct">{valid ? `${(shown / 100).toFixed(2)}%` : '—'}</span>;
+  if (!valid) return <span className="tv-pct">—</span>;
+  return (
+    <span className="tv-pct">
+      <Odometer text={((votes / valid) * 100).toFixed(2)} rollIn />%
+    </span>
+  );
+}
+
+/**
+ * 電視台式的推移轉場：內容換了（id 改變）時，舊的畫面留下來播放離場動畫，新的同時進場。
+ * 離場的畫面是凍結的快照，裡面的數字不會再從 0 滾起。
+ */
+function Swap({ id, children, className, ms = 800 }: { id: string; children: ReactNode; className?: string; ms?: number }) {
+  const current = useRef({ id, node: children });
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [leaving, setLeaving] = useState<{ id: string; node: ReactNode } | null>(null);
+  useLayoutEffect(() => {
+    if (current.current.id !== id) {
+      setLeaving(current.current);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setLeaving(null), ms);
+    }
+    current.current = { id, node: children };
+  });
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return (
+    <div className={`tv-swap${className ? ` ${className}` : ''}`}>
+      {leaving && (
+        <div className="tv-swap-out" key={`out-${leaving.id}`} aria-hidden="true">
+          <FrozenContext.Provider value={true}>{leaving.node}</FrozenContext.Provider>
+        </div>
+      )}
+      <div className="tv-swap-in" key={`in-${id}`}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 const PARTY_SHORT: [RegExp, string][] = [
@@ -242,17 +276,28 @@ function Stage({ summary }: { summary: Summary }) {
         {national ? (
           <NationalPanel contest={ready[0]} final={final} />
         ) : (
-          focus.map((c, i) => <FocusPanel key={c.id} contest={c} final={final} election={election} index={i} />)
+          [0, 1].map((slot) =>
+            focus[slot] ? (
+              <Swap key={slot} id={String(focus[slot].id)} className="tv-swap-panel">
+                <FocusPanel contest={focus[slot]} final={final} election={election} index={slot} />
+              </Swap>
+            ) : (
+              <div key={slot} />
+            ),
+          )
         )}
-        {!national && focus.length < 2 && <div />}
         <SidePanel summary={summary} national={national} />
       </div>
-      <Headline summary={summary} national={national} />
-      <div className="tv-strip" key={page}>
-        {strip.map((item, i) => (
-          <MiniPanel key={item.key} item={item} final={final} index={i} />
-        ))}
-      </div>
+      <Swap id={tv.headline || 'auto'} className="tv-swap-headline" ms={700}>
+        <Headline summary={summary} national={national} />
+      </Swap>
+      <Swap id={String(page)} className="tv-swap-strip" ms={900}>
+        <div className="tv-strip">
+          {strip.map((item, i) => (
+            <MiniPanel key={item.key} item={item} final={final} index={i} />
+          ))}
+        </div>
+      </Swap>
       <Footer summary={summary} items={items} />
     </>
   );
@@ -269,7 +314,7 @@ function FocusPanel({ contest, final, election, index }: { contest: ContestSumma
   useFlip(body, top.map((c) => c.id).join(','));
   const swapped = useLeadSwap(t.leaderId);
   return (
-    <section className="tv-card tv-focus" aria-label={contest.name} style={{ animationDelay: `${index * 120}ms` }}>
+    <section className="tv-card tv-focus" aria-label={contest.name} style={{ ['--delay' as string]: `${index * 140}ms` }}>
       <Tab text={contest.areaName} />
       <div className="tv-focus-body" ref={body}>
         {swapped && <div className="tv-flash" role="status">領先易位</div>}
@@ -408,7 +453,7 @@ function SidePanel({ summary, national }: { summary: Summary; national: boolean 
         />
       </div>
       {tally.length > 0 && (
-        <ul className="tv-tally">
+        <ul className={`tv-tally${tally.length > 4 ? ' is-many' : ''}`}>
           {tally.map((t) => (
             <li key={t.label} style={{ ['--c' as string]: t.color }}>
               <span className="tv-party">{t.label}</span>
@@ -427,28 +472,92 @@ function SidePanel({ summary, national }: { summary: Summary; national: boolean 
   );
 }
 
-function Headline({ summary, national }: { summary: Summary; national: boolean }) {
-  const { election, contests } = summary;
+/** 每秒更新一次的目前時間。 */
+function useNow(ms = 1000): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** 整體開票進度（0–1）：知道投開票所數就用投開票所，否則用已回報的統計單位。 */
+function overallShare(summary: Summary): number {
+  let counted = 0;
+  let total = 0;
+  let units = 0;
+  let unitsTotal = 0;
+  let stationsKnown = true;
+  for (const c of summary.contests) {
+    const t = c.totals;
+    units += t.unitsReported;
+    unitsTotal += t.unitsTotal;
+    if (t.stationsTotal === null || t.stationsCounted === null) stationsKnown = false;
+    else {
+      counted += t.stationsCounted;
+      total += t.stationsTotal;
+    }
+  }
+  if (stationsKnown && total > 0) return counted / total;
+  return unitsTotal ? units / unitsTotal : 0;
+}
+
+/** 快訊橫幅左側的白框：投票結束前倒數，開票後顯示整體進度。 */
+function HeadlineBox({ summary }: { summary: Summary }) {
+  const now = useNow();
+  const { election } = summary;
+  const close = new Date(`${election.date}T16:00:00+08:00`).getTime();
+  if (election.status === 'final') {
+    return (
+      <span className="tv-headline-box">
+        <span className="tv-hb-label">開票</span>
+        <span className="tv-hb-value">完成</span>
+      </span>
+    );
+  }
+  const left = Math.floor((close - now.getTime()) / 1000);
+  if (left > 0) {
+    const days = Math.floor(left / 86400);
+    const value = days > 0 ? `${days} 天` : `${pad2(Math.floor(left / 3600))}:${pad2(Math.floor((left % 3600) / 60))}:${pad2(left % 60)}`;
+    return (
+      <span className="tv-headline-box">
+        <span className="tv-hb-label">開票倒數</span>
+        <span className="tv-hb-value">{value}</span>
+      </span>
+    );
+  }
+  return (
+    <span className="tv-headline-box">
+      <span className="tv-hb-label">開票進度</span>
+      <span className="tv-hb-value">
+        <Odometer text={(overallShare(summary) * 100).toFixed(1)} />%
+      </span>
+    </span>
+  );
+}
+
+function Headline({ summary }: { summary: Summary; national: boolean }) {
+  const { election } = summary;
   const tv = election.tv;
   if (tv.headline) {
     return (
-      <div className={`tv-headline is-${tv.headlineStyle}`} key={tv.headline}>
-        <span className="tv-headline-tag">{tv.headlineStyle === 'alert' ? '快訊' : '最新'}</span>
-        <span className="tv-headline-text">{tv.headline}</span>
+      <div className={`tv-headline is-${tv.headlineStyle}`}>
+        <HeadlineBox summary={summary} />
+        <span className="tv-headline-text">
+          {tv.headlineStyle === 'alert' && <span className="tv-headline-chip">快訊</span>}
+          {tv.headline}
+        </span>
       </div>
     );
   }
-  // 沒有設定快訊時，自動帶出選舉名稱與進度。
-  let text = election.name;
-  if (election.status === 'final') text += '　開票完成';
-  else if (national) {
-    const p = progressOf(contests[0].totals, election.unitLevel);
-    if (p.done > 0) text += `　開票進度 ${(p.share * 100).toFixed(1)}%`;
-  }
+  // 沒有設定快訊時，深藍底黃字顯示選舉名稱。
   return (
     <div className="tv-headline is-auto">
-      <span className="tv-headline-tag">{election.status === 'final' ? '結果' : '開票'}</span>
-      <span className="tv-headline-text">{text}</span>
+      <HeadlineBox summary={summary} />
+      <span className="tv-headline-text">{election.status === 'final' ? `${election.name}　開票完成` : election.name}</span>
     </div>
   );
 }
@@ -457,12 +566,12 @@ function Headline({ summary, national }: { summary: Summary; national: boolean }
 function MiniPanel({ item, final, index }: { item: StripItem; final: boolean; index: number }) {
   const top = topOf(item.candidates, item.totals, 2);
   return (
-    <section className="tv-card tv-mini" aria-label={item.title} style={{ animationDelay: `${index * 90}ms` }}>
+    <section className="tv-card tv-mini" aria-label={item.title} style={{ ['--i' as string]: index }}>
       <Tab text={item.title} as="h3" />
       <div className="tv-mini-body">
         {top.map((c) => (
-          <div key={c.id} className={`tv-mini-row${item.totals.valid === 0 ? ' is-empty' : ''}`} style={colorVar(c)}>
-            <PartyBadge c={c} />
+          <div key={c.id} className={`tv-mini-row${item.totals.valid === 0 ? ' is-empty' : ''}`} style={colorVar(c)} title={c.party || '無黨籍'}>
+            <span className="tv-mini-no">{c.number}</span>
             <span className={`tv-name${nameClass(c.name)}`}>{c.name}</span>
             {item.whole && isWinner(c, item.totals, final) && <Stamp />}
             <span className="tv-mini-votes">

@@ -3,11 +3,11 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { AreaRow, Cand, ElectionInfo, Totals } from '../api';
 import { num, pct, ratio } from '../format';
-import { useTweened } from '../motion';
+import { Odometer } from './Odometer';
 
-/** 數字從 0（或上一個值）滾動到目前的值。 */
+/** 滾輪數字：第一次從 0 滾上來，之後數字改變時滾到新的值。 */
 export function CountUp({ value }: { value: number }) {
-  return <>{num(useTweened(value, 900, 0))}</>;
+  return <Odometer text={num(value)} rollIn />;
 }
 
 export const OTHER_COLOR = '#8A8983';
