@@ -99,7 +99,8 @@ if (!existsSync('.env')) {
 // 3. 安裝與建置
 const npm = (args, label) => {
   console.log(`${label}…`);
-  const r = spawnSync(isWin ? 'npm.cmd' : 'npm', args, { stdio: 'inherit', shell: isWin });
+  // Windows 要透過 shell 執行 npm.cmd；把指令組成一個字串，避免 Node.js 新版的安全性警告。
+  const r = isWin ? spawnSync(`npm ${args.join(' ')}`, { stdio: 'inherit', shell: true }) : spawnSync('npm', args, { stdio: 'inherit' });
   if (r.status !== 0) fail(`${label}失敗（見上方訊息）。請確認網路正常後再試一次。`);
 };
 if (!existsSync('node_modules')) npm(['ci'], '安裝套件中（第一次約需 1–3 分鐘）');
