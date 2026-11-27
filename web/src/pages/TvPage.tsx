@@ -7,7 +7,7 @@ import type { Cand, ContestSummary, ElectionInfo, Summary, Totals } from '../api
 import { num, pct, ratio } from '../format';
 import { TaiwanMap } from '../components/TaiwanMap';
 import { leaderOf, progressOf, ranked } from '../components/results';
-import { useFlip } from '../motion';
+import { reducedMotion, useChanged, useFlip } from '../motion';
 import { FrozenContext, Odometer } from '../components/Odometer';
 import './tv.css';
 
@@ -94,18 +94,40 @@ function Controls({ id }: { id: number }) {
  * countUp 時第一次出現會從 0 滾上來。
  */
 function Wan({ n, countUp = false }: { n: number; countUp?: boolean }) {
+  // 票數更新時整個數字發光一下
+  const cls = `wan${useChanged(n, 1200) ? ' is-bump' : ''}`;
   if (n < 10000) {
     return (
-      <span className="wan" aria-label={`${num(n)} 票`}>
+      <span className={cls} aria-label={`${num(n)} 票`}>
         <Odometer className="wan-major" text={String(n)} rollIn={countUp} />
       </span>
     );
   }
   return (
-    <span className="wan" aria-label={`${num(n)} 票`}>
-      <Odometer className="wan-major" text={String(Math.floor(n / 10000))} rollIn={countUp} />
+    <span className={cls} aria-label={`${num(n)} 票`}>
+      <Odometer className="wan-major" text={String(Math.floor(n / 10000))} rollIn={countUp} spin={0} />
       <span className="wan-unit">萬</span>
       <Odometer className="wan-rest" text={String(n % 10000).padStart(4, '0')} rollIn={countUp} />
+    </span>
+  );
+}
+
+/** 票數增加時，在數字上方飄出「+1,234」（第一次出現、票數沒增加時不顯示）。 */
+function VoteDelta({ n }: { n: number }) {
+  const prev = useRef(n);
+  const [pop, setPop] = useState<{ diff: number; key: number } | null>(null);
+  useEffect(() => {
+    const diff = n - prev.current;
+    prev.current = n;
+    if (diff <= 0 || reducedMotion()) return;
+    setPop((p) => ({ diff, key: (p?.key ?? 0) + 1 }));
+    const t = setTimeout(() => setPop(null), 2400);
+    return () => clearTimeout(t);
+  }, [n]);
+  if (!pop) return null;
+  return (
+    <span key={pop.key} className="tv-delta" aria-hidden="true">
+      +{num(pop.diff)}
     </span>
   );
 }
@@ -331,6 +353,7 @@ function FocusPanel({ contest, final, election, index }: { contest: ContestSumma
                 </div>
                 <div className={`tv-votes${votes >= 1_000_000 ? ' is-wide' : ''}`}>
                   <Wan n={votes} countUp />
+                  <VoteDelta n={votes} />
                 </div>
                 <div className="tv-meter">
                   <span className="tv-bar">
@@ -381,6 +404,7 @@ function NationalPanel({ contest, final }: { contest: ContestSummary; final: boo
               </div>
               <div className="tv-votes">
                 <Wan n={votes} countUp />
+                <VoteDelta n={votes} />
               </div>
               <div className="tv-meter">
                 <span className="tv-bar">

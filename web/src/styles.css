@@ -38,6 +38,15 @@
   }
 }
 
+/*
+ * 數字字型：Barlow Semi Condensed（SIL Open Font License，見 fonts/OFL-Barlow.txt）。
+ * 只涵蓋數字與 , . % + − 等符號（unicode-range），中文字仍用系統字型。
+ * Windows 的微軟正黑體最粗只有 Bold，數字看起來偏細，所以數字另外用這套更粗、更像電視台的字型。
+ */
+@font-face { font-family: 'Vote Digits'; src: url('./fonts/barlow-semi-condensed-latin-600-normal.woff2') format('woff2'); font-weight: 100 699; font-display: swap; unicode-range: U+0025, U+002B-002E, U+0030-0039, U+2212; }
+@font-face { font-family: 'Vote Digits'; src: url('./fonts/barlow-semi-condensed-latin-800-normal.woff2') format('woff2'); font-weight: 700 849; font-display: swap; unicode-range: U+0025, U+002B-002E, U+0030-0039, U+2212; }
+@font-face { font-family: 'Vote Digits'; src: url('./fonts/barlow-semi-condensed-latin-900-normal.woff2') format('woff2'); font-weight: 850 1000; font-display: swap; unicode-range: U+0025, U+002B-002E, U+0030-0039, U+2212; }
+
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -342,15 +351,20 @@ details.help-box > *:not(summary) { margin-top: 8px; }
 
 /* ---------- 動畫（系統設定「減少動態效果」時關閉）---------- */
 /* 滾輪數字：每一位是一條 0–9 的直條，用 transform 滾動（顯示卡處理，很順） */
+.odo, .cand-votes, .cand-pct, .stat-value, .ranked-figures, .tip-num, .contest-votes, .contest-pct, .table td {
+  font-family: 'Vote Digits', system-ui, -apple-system, 'Segoe UI', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+}
 .odo { display: inline-flex; font-variant-numeric: tabular-nums; }
 .odo-digit, .odo-sep { display: inline-block; height: 1.15em; line-height: 1.15; }
 .odo-digit { overflow: hidden; }
 .odo-strip {
   display: block;
-  transition: transform 1.25s cubic-bezier(0.16, 0.84, 0.3, 1);
-  transition-delay: calc(var(--k, 0) * 45ms);
+  /* 稍微超過再彈回來，像機械計數器停下的感覺；個位數先動，往左依序跟上 */
+  transition: transform 1.4s cubic-bezier(0.22, 1.12, 0.36, 1);
+  transition-delay: calc(var(--k, 0) * 55ms);
   will-change: transform;
 }
+.odo-strip.is-snap { transition: none; }
 .odo-strip > span { display: block; height: 1.15em; }
 .sharebar .seg { transition: flex-grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.4s ease; }
 .ranked-bar span { transition: width 0.9s cubic-bezier(0.2, 0.8, 0.2, 1); }

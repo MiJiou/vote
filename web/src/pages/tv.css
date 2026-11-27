@@ -28,7 +28,7 @@
   gap: 14px;
   color: var(--ink);
   color-scheme: light;
-  font-family: 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'Vote Digits', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-variant-numeric: tabular-nums;
   background:
     linear-gradient(118deg, transparent 0 46%, rgba(255, 255, 255, 0.5) 46% 52%, transparent 52%),
@@ -123,7 +123,27 @@
 .wan .wan-unit { padding-bottom: 0.16em; }
 .wan-unit { font-size: 0.32em; margin: 0 0.12em 0 0.08em; font-weight: 700; letter-spacing: 0; }
 .wan-rest { font-size: 0.74em; }
-.tv-votes { color: var(--c-ink); text-align: right; }
+.tv-votes { position: relative; color: var(--c-ink); text-align: right; }
+
+/* 票數增加時飄出「+1,234」 */
+/* 放在得票長條上（數字下方），不會蓋到姓名或票數 */
+.tv-delta {
+  position: absolute; z-index: 3; left: 0; top: calc(100% + 2px);
+  border: 3px solid #fff;
+  padding: 2px 12px; border-radius: 999px;
+  background: var(--c, #14263b); color: #fff;
+  font-size: 30px; font-weight: 900; line-height: 1.2; white-space: nowrap;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--c, #14263b) 40%, transparent);
+  pointer-events: none;
+  animation: tv-delta 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+@keyframes tv-delta {
+  0% { opacity: 0; translate: -30px 0; scale: 0.6; }
+  14% { opacity: 1; translate: 0 0; scale: 1.1; }
+  24% { scale: 1; }
+  78% { opacity: 1; translate: 0 0; }
+  100% { opacity: 0; translate: 0 -14px; }
+}
 .tv-meter { display: flex; align-items: center; gap: 14px; }
 .tv-bar { flex: 1; height: 14px; border-radius: 7px; background: var(--track); overflow: hidden; }
 .tv-bar span { display: block; height: 100%; border-radius: 7px; background: var(--c, var(--ink-2)); transition: width 0.6s ease; }
