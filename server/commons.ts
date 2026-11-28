@@ -404,12 +404,12 @@ export async function findPhotos(
 
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
-/** 下載維基共享資源上的照片（寬 640 像素的版本），交給後台在瀏覽器裡裁切。 */
+/** 下載維基共享資源上的照片（寬 500 像素的版本；維基媒體只允許標準縮圖尺寸，非標準尺寸容易被限制），交給後台在瀏覽器裡裁切。 */
 export async function fetchCommonsImage(file: unknown): Promise<{ mime: string; data: Buffer }> {
   if (typeof file !== 'string' || !file.trim() || file.length > 240 || /[/\\#?<>[\]{}|\u0000-\u001f]/.test(file)) {
     throw new HttpError(400, '檔名不正確');
   }
-  const url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file.trim().replace(/ /g, '_'))}?width=640`;
+  const url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file.trim().replace(/ /g, '_'))}?width=500`;
   const res = await http(url, { headers: { 'user-agent': UA }, redirect: 'follow', signal: AbortSignal.timeout(30_000) });
   if (res.status === 429) throw new HttpError(503, RATE_LIMITED);
   if (!res.ok) throw new HttpError(502, `下載照片失敗（HTTP ${res.status}）`);
@@ -421,4 +421,15 @@ export async function fetchCommonsImage(file: unknown): Promise<{ mime: string; 
   const data = Buffer.from(await res.arrayBuffer());
   if (data.length > 8 * 1024 * 1024) throw new HttpError(502, '照片檔案太大');
   return { mime, data };
+}
+
+/**
+ * 自動挑選：只有在恰好一位是「臺灣的政治人物」，或好幾位中恰好一位政黨相同時才選，
+ * 其他情況回傳 null（交給人判斷）。與後台照片搜尋的預選規則相同。
+ */
+export function autoPick(matches: PhotoMatch[], party: string): PhotoMatch | null {
+  const strong = matches.filter((m) => m.taiwan && m.politician);
+  if (strong.length === 1) return strong[0];
+  const sameParty = party.trim() ? strong.filter((m) => m.parties.some((p) => normParty(p) === normParty(party))) : [];
+  return sameParty.length === 1 ? sameParty[0] : null;
 }

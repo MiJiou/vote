@@ -1,6 +1,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { findPhotos, plainText, setCommonsFetch, usableLicense } from '../server/commons.ts';
+import { autoPick, findPhotos, plainText, setCommonsFetch, usableLicense } from '../server/commons.ts';
+import type { PhotoMatch } from '../server/commons.ts';
 import { matchPhotoFile } from '../web/src/admin/photoMatch.ts';
 import { loginAs, presidential, testApp, testCtx } from './helpers.ts';
 
@@ -255,4 +256,13 @@ test('依檔名「縣市-號次」批次套用照片：預設只補沒有照片�
   assert.equal(importPhotoFiles(ctx, election.id, [{ file: `${area}-1.jpg`, data: jpeg }], { credit: '公報', overwrite: true }).applied.length, 1);
   assert.equal(credit(candidates[0].id), '公報');
   assert.throws(() => importPhotoFiles(ctx, election.id, [{ file: `${area}-3.jpg`, data: Buffer.from('<svg/>') }], { credit: 'x' }));
+});
+
+test('自動挑選照片：只在能確定是本人時選', () => {
+  const m = (over: Partial<PhotoMatch>) => ({ taiwan: true, politician: true, parties: [], file: 'x', ...over }) as PhotoMatch;
+  assert.equal(autoPick([m({ file: 'a' }), m({ file: 'b', politician: false })], '')?.file, 'a', '恰好一位臺灣政治人物');
+  assert.equal(autoPick([m({ file: 'a', parties: ['民主進步黨'] }), m({ file: 'b', parties: ['中國國民黨'] })], '中國國民黨')?.file, 'b', '同名時看政黨');
+  assert.equal(autoPick([m({ file: 'a' }), m({ file: 'b' })], '中國國民黨'), null, '分不出來就不選');
+  assert.equal(autoPick([m({ file: 'a', politician: false })], ''), null, '例如同名的藝人');
+  assert.equal(autoPick([m({ file: 'a', parties: ['台灣民眾黨'] }), m({ file: 'b' })], '臺灣民眾黨')?.file, 'a', '台／臺 視為相同');
 });
