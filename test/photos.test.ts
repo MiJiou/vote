@@ -229,3 +229,30 @@ test('照片搜尋：同名的人依政黨排序；檔名搜尋被限制時停�
   assert.equal(limited, true);
   assert.equal(matches.has('王某'), false);
 });
+
+test('依檔名「縣市-號次」批次套用照片：預設只補沒有照片的人', async () => {
+  const { importPhotoFiles } = await import('../server/photos.ts');
+  const ctx = testCtx();
+  const { election, candidates } = presidential(ctx);
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+  const area = '全國';
+  const first = importPhotoFiles(ctx, election.id, [{ file: `${area}-1.jpg`, data: jpeg }], { credit: '甲' });
+  assert.deepEqual(first.applied.length, 1);
+  const files = [
+    { file: `${area}-1.jpg`, data: jpeg },
+    { file: `${area}-02.jpg`, data: jpeg },
+    { file: '臺北市-9.jpg', data: jpeg },
+    { file: 'readme.txt', data: jpeg },
+  ];
+  const r = importPhotoFiles(ctx, election.id, files, { credit: '中選會選舉公報' });
+  assert.equal(r.applied.length, 1, '2 號補上照片');
+  assert.equal(r.kept.length, 1, '1 號已有照片，保留');
+  assert.deepEqual(r.unmatched, ['臺北市-9.jpg', 'readme.txt']);
+  const credit = (id: number) => (ctx.db.prepare('SELECT photo_credit FROM candidates WHERE id = ?').get(id) as { photo_credit: string }).photo_credit;
+  assert.equal(credit(candidates[0].id), '甲');
+  assert.equal(credit(candidates[1].id), '中選會選舉公報');
+  // 覆寫模式；內容不是圖片時拒絕
+  assert.equal(importPhotoFiles(ctx, election.id, [{ file: `${area}-1.jpg`, data: jpeg }], { credit: '公報', overwrite: true }).applied.length, 1);
+  assert.equal(credit(candidates[0].id), '公報');
+  assert.throws(() => importPhotoFiles(ctx, election.id, [{ file: `${area}-3.jpg`, data: Buffer.from('<svg/>') }], { credit: 'x' }));
+});

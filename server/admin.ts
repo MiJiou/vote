@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { NATION, dryRun, tx } from './db.ts';
 import type { Ctx, Election, Role } from './domain.ts';
 import { audit, createElection, getContest, getElection, listCandidates, listContests, listUnits, parseTv, upsertCandidate } from './domain.ts';
-import { decodePhoto } from './photos.ts';
+import { decodePhoto, storePhoto } from './photos.ts';
 import { fetchCommonsImage, findPhotos } from './commons.ts';
 import { checkConfig, fetchPage, parseCecPage, parseConfig, pageUrl } from './ceclive.ts';
 import { createUser, getUser, newToken, setPassword, sha256 } from './auth.ts';
@@ -206,11 +206,7 @@ export function registerAdmin(app: FastifyInstance, ctx: Ctx): void {
     const body = (req.body ?? {}) as { dataUrl?: unknown; credit?: unknown };
     const { mime, data } = decodePhoto(body.dataUrl);
     const credit = typeof body.credit === 'string' ? body.credit.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
-    const version = Date.now().toString(36);
-    tx(db, () => {
-      db.prepare('INSERT INTO candidate_photos (candidate_id, mime, data) VALUES (?, ?, ?) ON CONFLICT (candidate_id) DO UPDATE SET mime = excluded.mime, data = excluded.data').run(cand.id, mime, data);
-      db.prepare('UPDATE candidates SET photo_version = ?, photo_credit = ? WHERE id = ?').run(version, credit, cand.id);
-    });
+    const version = storePhoto(ctx, cand.id, mime, data, credit);
     audit(ctx, user, 'candidate.photo', { contest: contest.name, name: cand.name, bytes: data.length, credit });
     ctx.bus.bump(contest.election_id);
     return { photo: `/api/candidates/${cand.id}/photo?v=${version}` };
