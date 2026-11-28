@@ -457,7 +457,7 @@
 .tv-livebadge-dot { width: 14px; height: 14px; border-radius: 50%; background: #fff; animation: tv-blink 1.4s ease-in-out infinite; }
 @keyframes tv-blink { 50% { opacity: 0.25; } }
 .tv-ticker { display: block; flex: 1; min-width: 0; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; animation: none; line-height: 72px; }
-.tv-ticker-track { display: inline-block; padding-left: 100%; animation: tv-marquee 30s linear infinite; will-change: transform; }
+.tv-ticker-track { display: inline-block; padding-left: 100%; animation: tv-marquee 30s linear 1 both; will-change: transform; }
 @keyframes tv-marquee { to { transform: translateX(-100%); } }
 
 /* 系統設定「減少動態效果」時，關閉所有動畫 */

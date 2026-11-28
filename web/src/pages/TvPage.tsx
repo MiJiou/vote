@@ -632,12 +632,16 @@ function Ticker({ lines }: { lines: string[] }) {
   const latest = useRef(lines);
   latest.current = lines;
   const [batch, setBatch] = useState(0);
+  // 每跑完一輪就換一個 key，讓跑馬燈元素重新建立、從最右邊重新開始。
+  // （不能只改 animation-duration：瀏覽器會用累計時間重算位置，新的一輪會從中間某處跳出來。）
+  const [round, setRound] = useState(0);
   const [shown, setShown] = useState(() => lines.slice(0, TICKER_BATCH));
   const next = () => {
     const all = latest.current;
     const batches = Math.max(1, Math.ceil(all.length / TICKER_BATCH));
     const b = (batch + 1) % batches;
     setBatch(b);
+    setRound((r) => r + 1);
     setShown(all.slice(b * TICKER_BATCH, b * TICKER_BATCH + TICKER_BATCH));
   };
   const text = shown.join('　｜　');
@@ -645,7 +649,7 @@ function Ticker({ lines }: { lines: string[] }) {
   const seconds = Math.max(18, Math.round(text.length * 0.3));
   return (
     <p className="tv-ticker">
-      <span className="tv-ticker-track" style={{ animationDuration: `${seconds}s` }} onAnimationIteration={next}>
+      <span key={round} className="tv-ticker-track" style={{ animationDuration: `${seconds}s` }} onAnimationIteration={next} onAnimationEnd={next}>
         {text}
       </span>
     </p>
