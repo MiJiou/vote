@@ -25,6 +25,7 @@ export type CecLiveConfig = {
 
 /** 中選會歷年開票網站的位置（2022：www.cec.gov.tw、2024：vote2024、2025：vote.cec.gov.tw）。 */
 export const DISCOVERY_BASES = [
+  'https://vote.cec.gov.tw/2026-local/zh-TW', // 2026 年實際使用的位置（11/28 開票當天確認）
   'https://vote2026.cec.gov.tw/zh-TW',
   'https://info.cec.gov.tw/vote2026/zh-TW', // 2026 年選舉資訊網所在位置
   'https://vote.cec.gov.tw/zh-TW',
