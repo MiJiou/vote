@@ -597,7 +597,7 @@
 }
 .tv-council-list li {
   /* 號次、政黨、標籤、票數用固定寬度（不跟字體大小放大），姓名欄才不會在字大的時候被擠掉 */
-  display: grid; grid-template-columns: 34px 30px minmax(0, 1fr) 96px 128px; align-items: center; gap: 10px;
+  display: grid; grid-template-columns: 34px 76px minmax(0, 1fr) 96px 120px; align-items: center; gap: 10px;
   padding: 0 10px; border-radius: 8px; background: var(--track); line-height: 1; min-height: 0;
 }
 .tv-council-list li.is-in { background: color-mix(in srgb, var(--c) 16%, #fff); box-shadow: inset 6px 0 0 var(--c); }
@@ -607,7 +607,12 @@
   font-size: 0; pointer-events: none;
 }
 .tv-council-no { font-family: 'Vote Digits', sans-serif; font-weight: 800; color: var(--ink-2); text-align: right; font-size: min(0.8em, 22px); }
-.tv-council-list .tv-party { width: 28px; height: 28px; font-size: 18px; border-radius: 6px; }
+.tv-council-party {
+  justify-self: stretch; text-align: center; padding: 4px 0; border-radius: 6px;
+  background: color-mix(in oklab, var(--c) 86%, #000); color: #fff;
+  font-size: 17px; font-weight: 900; line-height: 1.1; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden;
+}
+.tv-council-party.is-ind { background: #6f7a86; }
 .tv-council-name { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-council-tag { justify-self: start; font-size: 17px; font-weight: 800; color: #fff; background: #c8102e; border-radius: 999px; padding: 0.2em 0.55em; white-space: nowrap; }
 .tv-council-tag:empty { visibility: hidden; }

@@ -184,6 +184,25 @@ const PARTY_SHORT: [RegExp, string][] = [
 ];
 const isIndependent = (party: string) => !party.trim() || /無黨籍|未經政黨推薦/.test(party);
 
+/** 議員版面用的政黨簡稱（最多 3 個字）。 */
+const PARTY_LABEL: [RegExp, string][] = [
+  [/民主進步黨|民進黨/, '民進黨'],
+  [/中國國民黨|國民黨/, '國民黨'],
+  [/民眾黨/, '民眾黨'],
+  [/時代力量/, '時力'],
+  [/親民黨/, '親民黨'],
+  [/基進/, '基進'],
+  [/台灣團結聯盟|臺灣團結聯盟|台聯/, '台聯'],
+  [/社會民主黨/, '社民黨'],
+  [/綠黨/, '綠黨'],
+  [/新黨/, '新黨'],
+];
+function partyLabel(party: string): string {
+  if (isIndependent(party)) return '無黨籍';
+  for (const [re, label] of PARTY_LABEL) if (re.test(party)) return label;
+  return party.replace(/^(台灣|臺灣|中華)/, '').slice(0, 3);
+}
+
 function partyShort(party: string): string {
   if (isIndependent(party)) return '無';
   for (const [re, short] of PARTY_SHORT) if (re.test(party)) return short;
@@ -416,9 +435,16 @@ function CouncilFocus({ contest, final, election, index }: { contest: ContestSum
             const votes = t.votes[c.id] ?? 0;
             const inSeat = t.valid > 0 && i < seats;
             return (
-              <li key={c.id} data-flip={c.id} className={`${inSeat ? 'is-in' : ''}${t.valid > 0 && i === seats - 1 ? ' is-cut' : ''}`} style={colorVar(c)}>
+              <li
+                key={c.id}
+                data-flip={c.id}
+                className={`${inSeat ? 'is-in' : ''}${t.valid > 0 && i === seats - 1 ? ' is-cut' : ''}`}
+                style={isIndependent(c.party) ? { ['--c' as string]: '#8A8983' } : colorVar(c)}
+              >
                 <span className="tv-council-no">{c.number}</span>
-                <PartyBadge c={c} />
+                <span className={`tv-council-party${isIndependent(c.party) ? ' is-ind' : ''}`} title={c.party || '無黨籍'}>
+                  {partyLabel(c.party)}
+                </span>
                 <span className="tv-council-name">{c.name}</span>
                 <span className="tv-council-tag">{inSeat ? word : ''}</span>
                 <span className="tv-council-votes">
