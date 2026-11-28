@@ -130,7 +130,7 @@ function HomePage() {
               <div>
                 <div className="election-name">{e.name}</div>
                 <div className="muted">
-                  {e.type === 'president' ? '總統副總統選舉' : '直轄市長、縣市長選舉'} · {dateLabel(e.date)}
+                  {e.type === 'president' ? '總統副總統選舉' : e.name.includes('議員') ? '直轄市議員、縣市議員選舉' : '直轄市長、縣市長選舉'} · {dateLabel(e.date)}
                 </div>
               </div>
               <StatusBadge status={e.status} />
@@ -161,6 +161,8 @@ function ElectionPage() {
         <p className="empty">這場選舉還沒有設定選舉區。</p>
       ) : national ? (
         <NationalView election={data.election} contest={data.contests[0]} />
+      ) : data.contests.some((c) => (c.seats ?? 1) > 1) ? (
+        <CouncilView election={data.election} contests={data.contests} />
       ) : (
         <ContestsView election={data.election} contests={data.contests} />
       )}
@@ -370,6 +372,139 @@ function ContestCard({ election, contest, final }: { election: ElectionInfo; con
         </>
       )}
     </Link>
+  );
+}
+
+// ---------- 議員選舉：一個選舉區選出多席 ----------
+
+/** 得票前 N 名（N = 應選席次）；還沒有票數時回傳空集合。婦女保障名額不在此計算。 */
+function topSeats(c: ContestSummary): Set<number> {
+  if (!c.totals.valid) return new Set();
+  return new Set(ranked(c.candidates, c.totals).slice(0, c.seats ?? 1).map((k) => k.id));
+}
+
+const partyKey = (party: string) => (!party.trim() || /無黨籍|未經政黨推薦|^無$/.test(party) ? '無黨籍' : party);
+
+function CouncilView({ election, contests }: { election: ElectionInfo; contests: ContestSummary[] }) {
+  const final = election.status === 'final';
+  const [search, setSearch] = useSearchParams();
+  const counties: { code: string; name: string }[] = [];
+  for (const c of contests) if (!counties.some((x) => x.code === c.areaCode)) counties.push({ code: c.areaCode, name: c.areaName });
+  const county = counties.some((x) => x.code === search.get('county')) ? search.get('county')! : counties[0]?.code;
+
+  // 各政黨目前得票在應選席次內（暫居當選）的席次
+  const parties = new Map<string, { party: string; color: string; count: number }>();
+  let seatsTotal = 0;
+  let undecided = 0;
+  let doneCount = 0;
+  for (const c of contests) {
+    seatsTotal += c.seats ?? 1;
+    if (c.totals.done) doneCount++;
+    const top = topSeats(c);
+    undecided += (c.seats ?? 1) - top.size;
+    for (const k of c.candidates) {
+      if (!top.has(k.id)) continue;
+      const key = partyKey(k.party);
+      const hit = parties.get(key);
+      if (hit) hit.count++;
+      else parties.set(key, { party: key, color: key === '無黨籍' ? OTHER_COLOR : k.color, count: 1 });
+    }
+  }
+  const tally = [...parties.values()].sort((a, b) => b.count - a.count);
+  const word = final ? '當選' : '暫居當選';
+  const shown = contests.filter((c) => c.areaCode === county);
+
+  return (
+    <>
+      <section className="card block">
+        <h2 className="block-title">
+          各政黨{word}席次（共 {seatsTotal} 席）
+          <span className="block-side">
+            {doneCount} / {contests.length} 選舉區{final ? '開票完成' : '已全部開出'}
+          </span>
+        </h2>
+        {tally.length ? (
+          <>
+            <div className="sharebar" role="img" aria-label={tally.map((t) => `${t.party} ${t.count} 席`).join('、')}>
+              {tally.map((t) => (
+                <span key={t.party} className="seg" style={{ flexGrow: t.count, background: t.color }}>
+                  <span className="seg-label">{t.count}</span>
+                </span>
+              ))}
+              {undecided > 0 && (
+                <span className="seg seg-empty" style={{ flexGrow: undecided }}>
+                  <span className="seg-label">{undecided}</span>
+                </span>
+              )}
+            </div>
+            <ul className="legend">
+              {tally.map((t) => (
+                <li key={t.party}>
+                  <Swatch color={t.color} />
+                  {t.party} <strong>{t.count}</strong>
+                </li>
+              ))}
+              {undecided > 0 && (
+                <li>
+                  <span className="swatch swatch-empty" aria-hidden="true" />
+                  尚未開出 <strong>{undecided}</strong>
+                </li>
+              )}
+            </ul>
+          </>
+        ) : (
+          <p className="muted">尚未開出</p>
+        )}
+        <p className="muted small">依各選舉區得票前幾名（應選席次）計算，未計入婦女保障名額；正式當選名單以中選會公告為準。</p>
+      </section>
+      <nav className="council-counties" aria-label="選擇縣市">
+        {counties.map((x) => (
+          <button
+            key={x.code}
+            type="button"
+            className={`chip-btn${x.code === county ? ' is-on' : ''}`}
+            aria-pressed={x.code === county}
+            onClick={() => setSearch({ county: x.code }, { replace: true })}
+          >
+            {x.name}
+          </button>
+        ))}
+      </nav>
+      <section className="council-grid" aria-label="各選舉區開票結果">
+        {shown.map((c) => (
+          <CouncilCard key={c.id} election={election} contest={c} final={final} />
+        ))}
+      </section>
+    </>
+  );
+}
+
+function CouncilCard({ election, contest, final }: { election: ElectionInfo; contest: ContestSummary; final: boolean }) {
+  const t = contest.totals;
+  const top = topSeats(contest);
+  const word = final || t.done ? '當選' : '暫居當選';
+  return (
+    <article className="card council-card">
+      <div className="contest-head">
+        <span className="contest-name">{contest.name.replace(contest.areaName, '')}</span>
+        <span className="muted small">
+          應選 {contest.seats} 席 · {t.done ? doneLabel(t, final) : t.valid ? <>已開出 <ProgressText totals={t} unitLevel={election.unitLevel} final={final} /></> : '尚未開出'}
+        </span>
+      </div>
+      <ol className="council-list">
+        {ranked(contest.candidates, t).map((c) => (
+          <li key={c.id} className={top.has(c.id) ? 'is-in' : ''}>
+            <span className="council-no">{c.number}</span>
+            <Swatch color={c.color} />
+            <span className="council-name">{c.name}</span>
+            <span className="council-party muted">{partyKey(c.party)}</span>
+            <span>{top.has(c.id) && <span className={`tag ${word === '當選' ? 'tag-win' : 'tag-lead'}`}>{word}</span>}</span>
+            <span className="council-votes">{t.valid ? num(t.votes[c.id] ?? 0) : '—'}</span>
+            <span className="council-pct">{t.valid ? pct(t.votes[c.id] ?? 0, t.valid, 1) : ''}</span>
+          </li>
+        ))}
+      </ol>
+    </article>
   );
 }
 

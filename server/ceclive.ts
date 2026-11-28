@@ -40,7 +40,9 @@ export type ParsedPage = {
   stationsCounted: number | null;
   stationsTotal: number | null;
   dataTime: string | null;
-  candidates: { number: number; name: string | null; votes: number }[];
+  candidates: { number: number; name: string | null; votes: number; party?: string | null }[];
+  /** 應選人數（議員選舉頁面才有意義）。 */
+  seats: number | null;
   valid: number | null;
   invalid: number | null;
   total: number | null;
@@ -105,6 +107,10 @@ export function parseCecPage(html: string): ParsedPage {
     stationsTotal: stations ? toInt(stations[2]) : null,
     dataTime: time ? time[1] : null,
     candidates: [],
+    seats: (() => {
+      const m = /應選人數\s*[:：]\s*(\d+)/.exec(text);
+      return m ? Number(m[1]) : null;
+    })(),
     valid: null,
     invalid: null,
     total: null,
@@ -115,12 +121,14 @@ export function parseCecPage(html: string): ParsedPage {
     const votesCol = col(t.header, /^得票數$/, /得票數(?!率)/, /^votes?$/i);
     if (noCol >= 0 && votesCol >= 0) {
       const nameCol = col(t.header, /姓名/, /候選人/);
+      const partyCol = col(t.header, /推薦之?政黨/, /^政黨$/);
       for (const row of t.rows) {
         const number = toInt(cell(row, t.header, noCol));
         const votes = toInt(cell(row, t.header, votesCol));
         if (number === null || votes === null || number < 1 || number > 99) continue;
         const name = nameCol >= 0 ? (cell(row, t.header, nameCol) ?? null) : null;
-        page.candidates.push({ number, name: name ? name.replace(/[◎★✓✔]/g, '').trim() : null, votes });
+        const party = partyCol >= 0 ? (cell(row, t.header, partyCol) ?? null) : null;
+        page.candidates.push({ number, name: name ? name.replace(/[◎★✓✔]/g, '').trim() : null, votes, ...(partyCol >= 0 ? { party: party ? party.trim() : null } : {}) });
       }
       continue;
     }
@@ -185,7 +193,11 @@ export function setCecLiveFetch(f: Fetch | null): void {
 }
 
 export async function fetchPage(c: CecLiveConfig, code: string): Promise<{ url: string; html: string }> {
-  const url = pageUrl(c, code);
+  return fetchUrl(pageUrl(c, code));
+}
+
+/** 讀取中選會開票網站的一頁。 */
+export async function fetchUrl(url: string): Promise<{ url: string; html: string }> {
   // 加上時間參數避開快取，跟中選會網頁自己的做法一樣。
   const res = await http(`${url}?_=${Date.now()}`, {
     headers: { 'user-agent': 'Mozilla/5.0 (compatible; vote-dashboard/0.1)', accept: 'text/html,*/*' },
@@ -217,8 +229,13 @@ export type PageResult = { code: string; name: string; url: string; ok: boolean;
 export async function collectCecLive(ctx: Ctx, election: Election, c: CecLiveConfig): Promise<{ rows: NormRow[]; pages: PageResult[]; hash: string }> {
   if (election.unit_level === 'station') throw new HttpError(400, '中選會開票網站轉接只支援「縣市」或「鄉鎮市區」統計層級');
   const cands = candidatesByContest(ctx, election.id);
-  const targets: { code: string; name: string; contestId: number }[] = [];
+  const targets: { code: string; name: string; contestId: number; pagePath?: string }[] = [];
   for (const contest of listContests(ctx, election.id)) {
+    // 議員選舉：每個選舉區有自己的頁面，整個選舉區的結果記在所屬縣市底下。
+    if (contest.cec_page) {
+      targets.push({ code: contest.area_code, name: contest.name, contestId: contest.id, pagePath: contest.cec_page });
+      continue;
+    }
     const counties = contest.area_code === '00000' ? ctx.areas.counties.map((a) => a.code) : [contest.area_code];
     for (const county of counties) {
       if (election.unit_level === 'county') targets.push({ code: county, name: ctx.areas.name(county), contestId: contest.id });
@@ -227,10 +244,10 @@ export async function collectCecLive(ctx: Ctx, election: Election, c: CecLiveCon
   }
   // 一次最多同時讀 4 頁，避免對中選會網站造成負擔。
   const bodies: string[] = new Array(targets.length).fill('');
-  const pages = await pool(targets, 4, async (t): Promise<PageResult & { contestId: number }> => {
-    let url = pageUrl(c, t.code);
+  const pages = await pool(targets, 4, async (t): Promise<PageResult & { contestId: number; pagePath?: string }> => {
+    let url = t.pagePath ? `${c.base}/${t.pagePath}.html` : pageUrl(c, t.code);
     try {
-      const got = await fetchPage(c, t.code);
+      const got = t.pagePath ? await fetchUrl(url) : await fetchPage(c, t.code);
       url = got.url;
       bodies[targets.indexOf(t)] = got.html;
       const page = parseCecPage(got.html);
@@ -264,8 +281,8 @@ export async function collectCecLive(ctx: Ctx, election: Election, c: CecLiveCon
     rows.push(row);
   }
   const hash = createHash('sha256');
-  targets.forEach((t, i) => hash.update(t.code).update('\0').update(bodies[i]).update('\0'));
-  return { rows, pages: pages.map(({ contestId: _c, ...rest }) => rest), hash: hash.digest('hex') };
+  targets.forEach((t, i) => hash.update(t.pagePath ?? t.code).update('\0').update(bodies[i]).update('\0'));
+  return { rows, pages: pages.map(({ contestId: _c, pagePath: _p, ...rest }) => rest), hash: hash.digest('hex') };
 }
 
 /** 從中選會網站的導覽清單（2025 年起有）找出可能的類別代碼。 */

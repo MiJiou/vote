@@ -54,7 +54,17 @@ export function parseTv(raw: string | null | undefined): TvConfig {
     defaultView: o.defaultView === 'tv' ? 'tv' : 'detail',
   };
 }
-export type Contest = { id: number; election_id: number; name: string; area_code: string; sort: number };
+export type Contest = {
+  id: number;
+  election_id: number;
+  name: string;
+  area_code: string;
+  sort: number;
+  /** 應選席次（縣市長、總統為 1；議員選舉為多席）。 */
+  seats: number;
+  /** 這個選舉區在中選會開票網站上的頁面（例如「T1/63000010000000000」）；空字串表示依縣市代碼組出網址。 */
+  cec_page: string;
+};
 export type Candidate = {
   id: number;
   contest_id: number;

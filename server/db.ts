@@ -179,6 +179,12 @@ function migrate(db: DB): void {
     addColumn(db, 'elections', 'auto_final', 'INTEGER NOT NULL DEFAULT 0');
     db.exec('PRAGMA user_version = 4');
   }
+  if (version < 5) {
+    // 議員選舉：一個選舉區選出多席（seats），以及該選舉區在中選會開票網站上的頁面（例如 T1/63000010000000000）。
+    addColumn(db, 'contests', 'seats', 'INTEGER NOT NULL DEFAULT 1');
+    addColumn(db, 'contests', 'cec_page', "TEXT NOT NULL DEFAULT ''");
+    db.exec('PRAGMA user_version = 5');
+  }
 }
 
 const depth = new WeakMap<DB, number>();

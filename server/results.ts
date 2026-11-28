@@ -401,6 +401,7 @@ function contestSummary(ctx: Ctx, a: ContestAgg) {
     name: a.contest.name,
     areaCode: a.contest.area_code,
     areaName: ctx.areas.name(a.contest.area_code),
+    seats: a.contest.seats ?? 1,
     candidates: a.candidates.map((c) => ({
       id: c.id,
       number: c.number,

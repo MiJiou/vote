@@ -20,7 +20,8 @@
     "setup:2026": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/setup-2026.ts",
     "mock:cec": "node --disable-warning=ExperimentalWarning scripts/mock-cec.ts",
     "autopilot:2026": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/autopilot-2026.ts",
-    "photos:2026": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/photos-2026.ts"
+    "photos:2026": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/photos-2026.ts",
+    "council:2026": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/council-2026.ts"
   },
   "dependencies": {
     "@fastify/compress": "^9.3.0",

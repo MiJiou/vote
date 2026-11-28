@@ -42,7 +42,17 @@ export type ElectionInfo = {
   sourceNote: string;
   tv: TvConfig;
 };
-export type ContestSummary = { id: number; name: string; areaCode: string; areaName: string; candidates: Cand[]; totals: Totals; children?: AreaRow[] };
+export type ContestSummary = {
+  id: number;
+  name: string;
+  areaCode: string;
+  areaName: string;
+  /** 應選席次（議員選舉為多席）。 */
+  seats: number;
+  candidates: Cand[];
+  totals: Totals;
+  children?: AreaRow[];
+};
 export type Summary = { election: ElectionInfo; version: number; updatedAt: string | null; contests: ContestSummary[] };
 export type Drill = {
   election: ElectionInfo;

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { CSSProperties } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { NATION, useLive, useStreamStatus } from '../api';
 import type { Cand, ContestSummary, ElectionInfo, Summary, Totals } from '../api';
 import { num, pct, ratio } from '../format';
@@ -26,6 +26,8 @@ export default function TvPage() {
     document.title = data ? `${data.election.name}｜轉播版面` : '轉播版面';
     return () => void (document.title = '即時開票看板');
   }, [data]);
+  // 議員選舉（一區多席）還沒有轉播版面，改看一般看板。
+  if (data?.contests.some((c) => (c.seats ?? 1) > 1)) return <Navigate to={`/e/${id}?detail=1`} replace />;
   return (
     <div className="tv-viewport">
       <div className="tv-stage" style={{ transform: `translate(-50%, -50%) scale(${scale})` }}>
