@@ -585,3 +585,37 @@
 .tv-tally.is-many { column-gap: 12px; }
 .tv-tally.is-many li { font-size: 26px; gap: 6px; }
 .tv-tally.is-many .tv-party { width: 30px; height: 30px; font-size: 19px; border-radius: 7px; }
+
+/* ---------- 議員選舉轉播版面 ---------- */
+.tv-council-body { flex: 1; min-width: 0; padding: 12px 16px 12px 14px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; }
+.tv-council-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 34px; font-weight: 900; line-height: 1.1; padding: 0 4px; white-space: nowrap; }
+.tv-council-seats { font-size: 26px; font-weight: 700; color: var(--ink-2); }
+.tv-council-seats b { font-size: 34px; color: #c8102e; }
+.tv-council-list {
+  display: grid; grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); gap: 3px; min-height: 0;
+  font-size: clamp(18px, calc(440px / var(--rows) * 0.62), 34px);
+}
+.tv-council-list li {
+  display: grid; grid-template-columns: 1.7em 1.3em minmax(0, 1fr) 4.6em 5.4em; align-items: center; gap: 0.45em;
+  padding: 0 0.5em; border-radius: 8px; background: var(--track); line-height: 1; min-height: 0;
+}
+.tv-council-list li.is-in { background: color-mix(in srgb, var(--c) 16%, #fff); box-shadow: inset 6px 0 0 var(--c); }
+.tv-council-list li.is-cut { position: relative; margin-bottom: 4px; }
+.tv-council-list li.is-cut::after {
+  content: '當選線'; position: absolute; left: 0; right: 0; bottom: -6px; height: 0; border-bottom: 3px dashed #c8102e;
+  font-size: 0; pointer-events: none;
+}
+.tv-council-no { font-family: 'Vote Digits', sans-serif; font-weight: 800; color: var(--ink-2); text-align: right; font-size: 0.8em; }
+.tv-council-list .tv-party { width: 1.25em; height: 1.25em; font-size: 0.72em; border-radius: 0.22em; }
+.tv-council-name { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-council-tag { justify-self: start; font-size: 0.6em; font-weight: 800; color: #fff; background: #c8102e; border-radius: 999px; padding: 0.2em 0.55em; white-space: nowrap; }
+.tv-council-tag:empty { visibility: hidden; }
+.tv-council-votes { justify-self: end; font-weight: 900; font-size: 1.05em; color: var(--ink); }
+.tv-council-side { gap: 10px; }
+.tv-council-total { font-size: 24px; font-weight: 700; color: var(--ink-2); }
+.tv-seat-list { flex: 1; display: grid; align-content: start; gap: 10px; min-height: 0; overflow: hidden; }
+.tv-seat-list li { display: grid; grid-template-columns: 7.2em minmax(0, 1fr) 2.6em; align-items: center; gap: 10px; font-size: 26px; }
+.tv-seat-name { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-seat-bar { height: 22px; border-radius: 11px; background: var(--track); overflow: hidden; }
+.tv-seat-bar span { display: block; height: 100%; border-radius: 11px; background: var(--c); transition: width 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.tv-seat-count { justify-self: end; font-size: 38px; font-weight: 900; color: var(--ink); }

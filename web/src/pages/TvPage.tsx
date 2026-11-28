@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { CSSProperties } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { NATION, useLive, useStreamStatus } from '../api';
 import type { Cand, ContestSummary, ElectionInfo, Summary, Totals } from '../api';
 import { num, pct, ratio } from '../format';
@@ -26,8 +26,6 @@ export default function TvPage() {
     document.title = data ? `${data.election.name}｜轉播版面` : '轉播版面';
     return () => void (document.title = '即時開票看板');
   }, [data]);
-  // 議員選舉（一區多席）還沒有轉播版面，改看一般看板。
-  if (data?.contests.some((c) => (c.seats ?? 1) > 1)) return <Navigate to={`/e/${id}?detail=1`} replace />;
   return (
     <div className="tv-viewport">
       <div className="tv-stage" style={{ transform: `translate(-50%, -50%) scale(${scale})` }}>
@@ -276,6 +274,7 @@ function Stage({ summary }: { summary: Summary }) {
   const tick = useTick(tv.rotateSeconds * 1000);
 
   if (!ready.length) return <div className="tv-message">尚未設定候選人</div>;
+  if (ready.some((c) => (c.seats ?? 1) > 1)) return <CouncilStage summary={summary} ready={ready} tick={tick} />;
 
   // 底部輪播：全國性選舉輪播各縣市，多選舉區則輪播各選舉區。
   const items: StripItem[] = national
@@ -324,6 +323,181 @@ function Stage({ summary }: { summary: Summary }) {
       </Swap>
       <Footer summary={summary} items={items} />
     </>
+  );
+}
+
+// ---------- 議員選舉（一區多席）----------
+
+/** 得票前 N 名（N = 應選席次）；還沒有票數時為空。婦女保障名額不在此計算。 */
+function seatIds(c: ContestSummary): Set<number> {
+  if (!c.totals.valid) return new Set();
+  return new Set(ranked(c.candidates, c.totals).slice(0, c.seats ?? 1).map((k) => k.id));
+}
+
+/** 「臺北市第1選舉區(平地原住民)」→「臺北1區・平原」。 */
+function councilShort(c: ContestSummary): string {
+  const no = /第(\d+)選舉區/.exec(c.name)?.[1] ?? '';
+  const kind = c.name.includes('平地原住民') ? '平原' : c.name.includes('山地原住民') ? '山原' : '';
+  return `${c.areaName.replace(/[市縣]$/, '')}${no}區${kind ? `・${kind}` : ''}`;
+}
+
+function CouncilStage({ summary, ready, tick }: { summary: Summary; ready: ContestSummary[]; tick: number }) {
+  const { election } = summary;
+  const tv = election.tv;
+  const final = election.status === 'final';
+  const items: StripItem[] = ready.map((c) => ({ key: String(c.id), title: councilShort(c).replace(/・.*/, ''), candidates: c.candidates, totals: c.totals, whole: false }));
+  const pages = Math.max(1, Math.ceil(items.length / 4));
+  const page = tick % pages;
+  const strip = items.slice(page * 4, page * 4 + 4);
+  // 大版面：管理員指定的選舉區優先，其餘依序輪播；已經有票數的選舉區優先輪到。
+  const pinned = tv.focus.map((id) => ready.find((c) => c.id === id)).filter((c): c is ContestSummary => !!c);
+  const pool = ready.filter((c) => !pinned.includes(c) && c.totals.valid > 0);
+  const rest = pool.length ? pool : ready.filter((c) => !pinned.includes(c));
+  const turn = Math.floor(tick / 2);
+  const focus = [...pinned];
+  for (let i = 0; focus.length < Math.min(2, ready.length) && i < rest.length; i++) focus.push(rest[(turn * (2 - pinned.length) + i) % rest.length]);
+  const lines = ready
+    .filter((c) => c.totals.valid > 0)
+    .map((c) => {
+      const inSeat = ranked(c.candidates, c.totals).slice(0, c.seats ?? 1);
+      return `${c.name}（應選 ${c.seats} 席）${final || c.totals.done ? '當選' : '暫居當選'}：${inSeat.map((k) => k.name).join('、')}`;
+    });
+  return (
+    <>
+      <div className="tv-top">
+        {[0, 1].map((slot) =>
+          focus[slot] ? (
+            <Swap key={slot} id={String(focus[slot].id)} className="tv-swap-panel">
+              <CouncilFocus contest={focus[slot]} final={final} election={election} index={slot} />
+            </Swap>
+          ) : (
+            <div key={slot} />
+          ),
+        )}
+        <CouncilSide summary={summary} />
+      </div>
+      <Swap id={tv.headline || 'auto'} className="tv-swap-headline" ms={700}>
+        <Headline summary={summary} national={false} />
+      </Swap>
+      <Swap id={String(page)} className="tv-swap-strip" ms={900}>
+        <div className="tv-strip">
+          {strip.map((item, i) => (
+            <MiniPanel key={item.key} item={item} final={final} index={i} />
+          ))}
+        </div>
+      </Swap>
+      <Footer summary={summary} items={items} extra={lines} />
+    </>
+  );
+}
+
+/** 議員選舉區的大版面：前幾名（應選席次再多兩位）、當選線。 */
+function CouncilFocus({ contest, final, election, index }: { contest: ContestSummary; final: boolean; election: ElectionInfo; index: number }) {
+  const t = contest.totals;
+  const seats = contest.seats ?? 1;
+  const order = t.valid ? ranked(contest.candidates, t) : topOf(contest.candidates, t, contest.candidates.length);
+  const rows = order.slice(0, Math.min(order.length, seats + 2, 15));
+  const others = contest.candidates.length - rows.length;
+  const p = progressOf(t, election.unitLevel);
+  const body = useRef<HTMLOListElement>(null);
+  useFlip(body, rows.map((c) => c.id).join(','));
+  const word = final || t.done ? '當選' : '暫居當選';
+  const label = councilShort(contest).replace(/^[^\d]+/, '第').replace('區・', '選舉區・').replace(/區$/, '選舉區');
+  return (
+    <section className="tv-card tv-focus tv-council" aria-label={contest.name} style={{ ['--delay' as string]: `${index * 140}ms` }}>
+      <Tab text={contest.areaName} />
+      <div className="tv-council-body">
+        <h3 className="tv-council-head">
+          <span>{label}</span>
+          <span className="tv-council-seats">應選 <b>{seats}</b> 席</span>
+        </h3>
+        <ol className="tv-council-list" ref={body} style={{ ['--rows' as string]: rows.length }}>
+          {rows.map((c, i) => {
+            const votes = t.votes[c.id] ?? 0;
+            const inSeat = t.valid > 0 && i < seats;
+            return (
+              <li key={c.id} data-flip={c.id} className={`${inSeat ? 'is-in' : ''}${t.valid > 0 && i === seats - 1 ? ' is-cut' : ''}`} style={colorVar(c)}>
+                <span className="tv-council-no">{c.number}</span>
+                <PartyBadge c={c} />
+                <span className="tv-council-name">{c.name}</span>
+                <span className="tv-council-tag">{inSeat ? word : ''}</span>
+                <span className="tv-council-votes">
+                  <Odometer text={num(votes)} rollIn />
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+        <p className="tv-focus-foot">
+          <span>{t.done ? (final ? '開票完成' : '已全部開出') : t.valid ? `已開出 ${num(p.done)} / ${num(p.total)} ${p.label}` : '尚未開出'}</span>
+          {others > 0 && <span>另有 {others} 位候選人</span>}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/** 議員選舉右側：各政黨暫居當選席次＋整體進度。 */
+function CouncilSide({ summary }: { summary: Summary }) {
+  const { election, contests } = summary;
+  const final = election.status === 'final';
+  const { tally, total, undecided } = useMemo(() => {
+    const m = new Map<string, { party: string; color: string; count: number }>();
+    let total = 0;
+    let undecided = 0;
+    for (const c of contests) {
+      total += c.seats ?? 1;
+      const ids = seatIds(c);
+      undecided += (c.seats ?? 1) - ids.size;
+      for (const k of c.candidates) {
+        if (!ids.has(k.id)) continue;
+        const key = isIndependent(k.party) ? '無黨籍' : k.party;
+        const hit = m.get(key);
+        if (hit) hit.count++;
+        else m.set(key, { party: key, color: key === '無黨籍' ? '#8A8983' : k.color, count: 1 });
+      }
+    }
+    return { tally: [...m.values()].sort((a, b) => b.count - a.count), total, undecided };
+  }, [summary]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = tally.slice(0, 5);
+  const more = tally.slice(5).reduce((s, t) => s + t.count, 0);
+  const max = Math.max(1, ...shown.map((t) => t.count));
+  const withData = contests.filter((c) => c.totals.valid > 0).length;
+  const done = contests.filter((c) => c.totals.done).length;
+  const shareDone = contests.length ? done / contests.length : 0;
+  return (
+    <section className="tv-card tv-side tv-council-side" aria-label="各政黨席次">
+      <h2 className="tv-side-title">各政黨{final ? '當選' : '暫居當選'}席次</h2>
+      <p className="tv-council-total">共 {total} 席{undecided > 0 ? `・尚未開出 ${undecided} 席` : ''}</p>
+      <ul className="tv-seat-list">
+        {shown.map((t) => (
+          <li key={t.party} style={{ ['--c' as string]: t.color }}>
+            <span className="tv-seat-name">{t.party}</span>
+            <span className="tv-seat-bar">
+              <span style={{ width: `${(t.count / max) * 100}%` }} />
+            </span>
+            <b className="tv-seat-count">
+              <Odometer text={String(t.count)} rollIn />
+            </b>
+          </li>
+        ))}
+        {more > 0 && (
+          <li style={{ ['--c' as string]: '#b8c2cc' }}>
+            <span className="tv-seat-name">其他政黨</span>
+            <span className="tv-seat-bar">
+              <span style={{ width: `${(more / max) * 100}%` }} />
+            </span>
+            <b className="tv-seat-count">{more}</b>
+          </li>
+        )}
+      </ul>
+      <div className={`tv-progress${shareDone > 0 && shareDone < 1 && !final ? ' is-running' : ''}`}>
+        <span className="tv-bar">
+          <span style={{ width: `${shareDone * 100}%` }} />
+        </span>
+        <p>{final ? `${contests.length} 選舉區開票完成` : `${withData} / ${contests.length} 區已有票數　${done} 區已開完`}</p>
+      </div>
+    </section>
   );
 }
 
@@ -647,8 +821,8 @@ function Ticker({ lines }: { lines: string[] }) {
     setShown(all.slice(b * TICKER_BATCH, b * TICKER_BATCH + TICKER_BATCH));
   };
   const text = shown.join('　｜　');
-  // 固定的閱讀速度：每個字約 0.3 秒。
-  const seconds = Math.max(18, Math.round(text.length * 0.3));
+  // 固定的閱讀速度：每個字約 0.5 秒（太快觀眾來不及讀）。
+  const seconds = Math.max(30, Math.round(text.length * 0.5));
   return (
     <p className="tv-ticker">
       <span key={round} className="tv-ticker-track" style={{ animationDuration: `${seconds}s` }} onAnimationIteration={next} onAnimationEnd={next}>
@@ -660,7 +834,7 @@ function Ticker({ lines }: { lines: string[] }) {
 
 const clockFormat = new Intl.DateTimeFormat('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Taipei' });
 
-function Footer({ summary, items }: { summary: Summary; items: StripItem[] }) {
+function Footer({ summary, items, extra }: { summary: Summary; items: StripItem[]; extra?: string[] }) {
   const streaming = useStreamStatus();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -680,9 +854,10 @@ function Footer({ summary, items }: { summary: Summary; items: StripItem[] }) {
       const top = topOf(item.candidates, item.totals, 2);
       out.push(`${item.title}　` + top.map((c) => `${c.name} ${num(item.totals.votes[c.id] ?? 0)} 票（${pct(item.totals.votes[c.id] ?? 0, item.totals.valid, 1)}）`).join('　'));
     }
+    if (extra) out.splice(0, out.length, ...extra);
     if (!out.length) out.push(summary.election.name);
     return out;
-  }, [summary, items]);
+  }, [summary, items, extra]);
 
   return (
     <footer className="tv-footer">
